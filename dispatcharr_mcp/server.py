@@ -1,13 +1,17 @@
 """Dispatcharr MCP server — exposes Dispatcharr IPTV management to AI agents.
 
 Tools are grouped by domain:
+  • Accounts/Users — users, groups, permissions, API keys
   • Channels       — list, get, create, update, delete channels & groups
   • Streams        — list/get raw M3U streams by source
   • Proxy          — live stream status and control (change, stop, failover)
   • EPG            — EPG sources and programme data
-  • M3U Accounts   — manage M3U provider accounts
+  • M3U Accounts   — manage M3U provider accounts, filters, profiles, server-groups
   • VOD            — movies, series, episodes
-  • System         — settings, stream profiles, system events
+  • System         — settings, stream profiles, useragents, system events
+  • Notifications  — system notifications
+  • Connect        — integrations, subscriptions, delivery logs
+  • DVR            — recordings, series rules, recurring rules
 """
 
 from mcp.server.fastmcp import FastMCP
@@ -889,6 +893,577 @@ async def delete_channel_profile(profile_id: int) -> dict:
 async def list_hdhr_devices() -> list:
     """List all configured HDHomeRun virtual tuner devices."""
     return await _client().get("/api/hdhr/devices/")
+
+
+# ---------------------------------------------------------------------------
+# ACCOUNTS — users, groups, permissions, API keys
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_users() -> list:
+    """List all Dispatcharr user accounts."""
+    return await _client().get("/api/accounts/users/")
+
+
+@mcp.tool()
+async def get_user(user_id: int) -> dict:
+    """Get a single user by ID."""
+    return await _client().get(f"/api/accounts/users/{user_id}/")
+
+
+@mcp.tool()
+async def create_user(
+    username: str,
+    password: str,
+    email: str | None = None,
+    is_staff: bool = False,
+    is_active: bool = True,
+) -> dict:
+    """Create a new Dispatcharr user account."""
+    data: dict = {
+        "username": username,
+        "password": password,
+        "is_staff": is_staff,
+        "is_active": is_active,
+    }
+    if email is not None:
+        data["email"] = email
+    return await _client().post("/api/accounts/users/", data=data)
+
+
+@mcp.tool()
+async def update_user(user_id: int, fields: dict) -> dict:
+    """Partially update a user account.
+
+    Pass any subset of user fields as `fields`
+    (e.g. ``{"email": "new@example.com", "is_active": False}``).
+    """
+    return await _client().patch(f"/api/accounts/users/{user_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_user(user_id: int) -> dict:
+    """Delete a user account by ID."""
+    return await _client().delete(f"/api/accounts/users/{user_id}/")
+
+
+@mcp.tool()
+async def get_current_user() -> dict:
+    """Get the currently authenticated user's profile."""
+    return await _client().get("/api/accounts/users/me/")
+
+
+@mcp.tool()
+async def update_current_user(fields: dict) -> dict:
+    """Update the currently authenticated user's own profile.
+
+    Pass any subset of user fields as `fields`
+    (e.g. ``{"email": "me@example.com"}``).
+    """
+    return await _client().patch("/api/accounts/users/me/", data=fields)
+
+
+@mcp.tool()
+async def list_user_groups() -> list:
+    """List all user permission groups."""
+    return await _client().get("/api/accounts/groups/")
+
+
+@mcp.tool()
+async def get_user_group(group_id: int) -> dict:
+    """Get a single user permission group by ID."""
+    return await _client().get(f"/api/accounts/groups/{group_id}/")
+
+
+@mcp.tool()
+async def create_user_group(name: str) -> dict:
+    """Create a new user permission group."""
+    return await _client().post("/api/accounts/groups/", data={"name": name})
+
+
+@mcp.tool()
+async def update_user_group(group_id: int, fields: dict) -> dict:
+    """Partially update a user permission group."""
+    return await _client().patch(f"/api/accounts/groups/{group_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_user_group(group_id: int) -> dict:
+    """Delete a user permission group by ID."""
+    return await _client().delete(f"/api/accounts/groups/{group_id}/")
+
+
+@mcp.tool()
+async def list_permissions() -> list:
+    """List all available permissions in the system."""
+    return await _client().get("/api/accounts/permissions/")
+
+
+@mcp.tool()
+async def list_api_keys() -> list:
+    """List all API keys for the current user."""
+    return await _client().get("/api/accounts/api-keys/")
+
+
+@mcp.tool()
+async def generate_api_key() -> dict:
+    """Generate a new API key for the current user."""
+    return await _client().post("/api/accounts/api-keys/generate/", data={})
+
+
+@mcp.tool()
+async def revoke_api_key(key: str) -> dict:
+    """Revoke an API key.
+
+    `key` is the API key string to revoke.
+    """
+    return await _client().post("/api/accounts/api-keys/revoke/", data={"key": key})
+
+
+# ---------------------------------------------------------------------------
+# NOTIFICATIONS
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_notifications(
+    page: int | None = None,
+    page_size: int | None = None,
+) -> dict:
+    """List system notifications."""
+    return await _client().get(
+        "/api/core/notifications/",
+        params=_clean({"page": page, "page_size": page_size}),
+    )
+
+
+@mcp.tool()
+async def get_notification(notification_id: int) -> dict:
+    """Get a single notification by ID."""
+    return await _client().get(f"/api/core/notifications/{notification_id}/")
+
+
+@mcp.tool()
+async def get_notification_count() -> dict:
+    """Get the count of unread/active notifications."""
+    return await _client().get("/api/core/notifications/count/")
+
+
+@mcp.tool()
+async def dismiss_notification(notification_id: int) -> dict:
+    """Dismiss (mark as read) a single notification by ID."""
+    return await _client().post(
+        f"/api/core/notifications/{notification_id}/dismiss/", data={}
+    )
+
+
+@mcp.tool()
+async def dismiss_all_notifications() -> dict:
+    """Dismiss all active notifications at once."""
+    return await _client().post("/api/core/notifications/dismiss-all/", data={})
+
+
+@mcp.tool()
+async def delete_notification(notification_id: int) -> dict:
+    """Delete a notification by ID."""
+    return await _client().delete(f"/api/core/notifications/{notification_id}/")
+
+
+# ---------------------------------------------------------------------------
+# STREAM PROFILES — full CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_stream_profile(profile_id: int) -> dict:
+    """Get a single stream profile by ID."""
+    return await _client().get(f"/api/core/streamprofiles/{profile_id}/")
+
+
+@mcp.tool()
+async def create_stream_profile(
+    name: str,
+    parameters: str | None = None,
+    profile_type: str | None = None,
+) -> dict:
+    """Create a new stream profile (FFmpeg/Streamlink/VLC output configuration).
+
+    `parameters` is the FFmpeg/encoder parameters string.
+    `profile_type` is one of ``"ffmpeg"``, ``"streamlink"``, ``"vlc"``, etc.
+    """
+    data: dict = {"name": name}
+    if parameters is not None:
+        data["parameters"] = parameters
+    if profile_type is not None:
+        data["profile_type"] = profile_type
+    return await _client().post("/api/core/streamprofiles/", data=data)
+
+
+@mcp.tool()
+async def update_stream_profile(profile_id: int, fields: dict) -> dict:
+    """Partially update a stream profile.
+
+    Pass any subset of profile fields as `fields`
+    (e.g. ``{"name": "HQ FFMPEG", "parameters": "-c:v copy"}``).
+    """
+    return await _client().patch(f"/api/core/streamprofiles/{profile_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_stream_profile(profile_id: int) -> dict:
+    """Delete a stream profile by ID."""
+    return await _client().delete(f"/api/core/streamprofiles/{profile_id}/")
+
+
+# ---------------------------------------------------------------------------
+# USERAGENTS
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_useragents() -> list:
+    """List all configured user-agent strings."""
+    return await _client().get("/api/core/useragents/")
+
+
+@mcp.tool()
+async def get_useragent(useragent_id: int) -> dict:
+    """Get a single user-agent by ID."""
+    return await _client().get(f"/api/core/useragents/{useragent_id}/")
+
+
+@mcp.tool()
+async def create_useragent(name: str, user_agent_string: str) -> dict:
+    """Create a new user-agent string entry.
+
+    `name` is a friendly label; `user_agent_string` is the raw UA header value.
+    """
+    return await _client().post(
+        "/api/core/useragents/",
+        data={"name": name, "user_agent_string": user_agent_string},
+    )
+
+
+@mcp.tool()
+async def update_useragent(useragent_id: int, fields: dict) -> dict:
+    """Partially update a user-agent entry."""
+    return await _client().patch(f"/api/core/useragents/{useragent_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_useragent(useragent_id: int) -> dict:
+    """Delete a user-agent entry by ID."""
+    return await _client().delete(f"/api/core/useragents/{useragent_id}/")
+
+
+@mcp.tool()
+async def list_timezones() -> list:
+    """List all supported timezone strings."""
+    return await _client().get("/api/core/timezones/")
+
+
+# ---------------------------------------------------------------------------
+# CONNECT — integrations, subscriptions, logs
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_integration(integration_id: int) -> dict:
+    """Get a single Connect integration by ID."""
+    return await _client().get(f"/api/connect/integrations/{integration_id}/")
+
+
+@mcp.tool()
+async def create_integration(
+    name: str,
+    integration_type: str,
+    url: str | None = None,
+    is_active: bool = True,
+    config: dict | None = None,
+) -> dict:
+    """Create a new Connect integration (webhook, API callback, script).
+
+    `integration_type` is the integration kind (e.g. ``"webhook"``).
+    `url` is the target endpoint URL for webhook integrations.
+    `config` is an optional dict of integration-specific settings.
+    """
+    data: dict = {"name": name, "integration_type": integration_type, "is_active": is_active}
+    if url is not None:
+        data["url"] = url
+    if config is not None:
+        data["config"] = config
+    return await _client().post("/api/connect/integrations/", data=data)
+
+
+@mcp.tool()
+async def update_integration(integration_id: int, fields: dict) -> dict:
+    """Partially update a Connect integration."""
+    return await _client().patch(
+        f"/api/connect/integrations/{integration_id}/", data=fields
+    )
+
+
+@mcp.tool()
+async def delete_integration(integration_id: int) -> dict:
+    """Delete a Connect integration by ID."""
+    return await _client().delete(f"/api/connect/integrations/{integration_id}/")
+
+
+@mcp.tool()
+async def test_integration(integration_id: int) -> dict:
+    """Send a test event to a Connect integration to verify connectivity."""
+    return await _client().post(
+        f"/api/connect/integrations/{integration_id}/test/", data={}
+    )
+
+
+@mcp.tool()
+async def get_integration_subscriptions(integration_id: int) -> list:
+    """Get the event subscriptions for a specific integration."""
+    return await _client().get(
+        f"/api/connect/integrations/{integration_id}/subscriptions/"
+    )
+
+
+@mcp.tool()
+async def set_integration_subscriptions(
+    integration_id: int, subscription_ids: list[int]
+) -> dict:
+    """Replace the full set of event subscriptions for an integration.
+
+    `subscription_ids` is the complete list of subscription IDs that should
+    be active for this integration after the call.
+    """
+    return await _client().put(
+        f"/api/connect/integrations/{integration_id}/subscriptions/set/",
+        data={"subscription_ids": subscription_ids},
+    )
+
+
+@mcp.tool()
+async def list_subscriptions() -> list:
+    """List all Connect event subscription types."""
+    return await _client().get("/api/connect/subscriptions/")
+
+
+@mcp.tool()
+async def get_subscription(subscription_id: int) -> dict:
+    """Get a single Connect subscription by ID."""
+    return await _client().get(f"/api/connect/subscriptions/{subscription_id}/")
+
+
+@mcp.tool()
+async def create_subscription(event_type: str, fields: dict | None = None) -> dict:
+    """Create a new Connect event subscription.
+
+    `event_type` is the event name to subscribe to.
+    `fields` can supply any additional subscription fields.
+    """
+    data: dict = {"event_type": event_type}
+    if fields:
+        data.update(fields)
+    return await _client().post("/api/connect/subscriptions/", data=data)
+
+
+@mcp.tool()
+async def update_subscription(subscription_id: int, fields: dict) -> dict:
+    """Partially update a Connect subscription."""
+    return await _client().patch(
+        f"/api/connect/subscriptions/{subscription_id}/", data=fields
+    )
+
+
+@mcp.tool()
+async def delete_subscription(subscription_id: int) -> dict:
+    """Delete a Connect subscription by ID."""
+    return await _client().delete(f"/api/connect/subscriptions/{subscription_id}/")
+
+
+@mcp.tool()
+async def get_delivery_log(log_id: int) -> dict:
+    """Get a single stream delivery/webhook log entry by ID."""
+    return await _client().get(f"/api/connect/logs/{log_id}/")
+
+
+# ---------------------------------------------------------------------------
+# RECORDINGS — gaps (update, metadata, comskip, artwork)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def update_recording(recording_id: int, fields: dict) -> dict:
+    """Partially update a DVR recording's metadata fields.
+
+    Pass any subset of recording fields as `fields`
+    (e.g. ``{"title": "Better Title", "description": "…"}``).
+    """
+    return await _client().patch(
+        f"/api/channels/recordings/{recording_id}/", data=fields
+    )
+
+
+@mcp.tool()
+async def update_recording_metadata(recording_id: int) -> dict:
+    """Trigger an automatic metadata refresh for a recording from online sources."""
+    return await _client().post(
+        f"/api/channels/recordings/{recording_id}/update-metadata/", data={}
+    )
+
+
+@mcp.tool()
+async def refresh_recording_artwork(recording_id: int) -> dict:
+    """Re-fetch and update the poster/thumbnail artwork for a recording."""
+    return await _client().post(
+        f"/api/channels/recordings/{recording_id}/refresh-artwork/", data={}
+    )
+
+
+@mcp.tool()
+async def run_comskip(recording_id: int) -> dict:
+    """Run comskip (commercial detection) on a recording.
+
+    Requires comskip to be configured in DVR settings.
+    """
+    return await _client().post(
+        f"/api/channels/recordings/{recording_id}/comskip/", data={}
+    )
+
+
+@mcp.tool()
+async def bulk_delete_upcoming_recordings() -> dict:
+    """Delete all upcoming (not yet started) scheduled recordings."""
+    return await _client().post("/api/channels/recordings/bulk-delete-upcoming/", data={})
+
+
+@mcp.tool()
+async def get_comskip_config() -> dict:
+    """Get the current DVR comskip configuration."""
+    return await _client().get("/api/channels/dvr/comskip-config/")
+
+
+@mcp.tool()
+async def update_comskip_config(fields: dict) -> dict:
+    """Update the DVR comskip configuration.
+
+    Pass comskip config fields as `fields`
+    (e.g. ``{"ini_content": "...", "enabled": True}``).
+    """
+    return await _client().post("/api/channels/dvr/comskip-config/", data=fields)
+
+
+# ---------------------------------------------------------------------------
+# M3U GAPS — server-groups, account profiles, refresh-vod, group-settings
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_m3u_server_groups() -> list:
+    """List all M3U server groups."""
+    return await _client().get("/api/m3u/server-groups/")
+
+
+@mcp.tool()
+async def get_m3u_server_group(group_id: int) -> dict:
+    """Get a single M3U server group by ID."""
+    return await _client().get(f"/api/m3u/server-groups/{group_id}/")
+
+
+@mcp.tool()
+async def create_m3u_server_group(name: str) -> dict:
+    """Create a new M3U server group."""
+    return await _client().post("/api/m3u/server-groups/", data={"name": name})
+
+
+@mcp.tool()
+async def update_m3u_server_group(group_id: int, fields: dict) -> dict:
+    """Partially update an M3U server group."""
+    return await _client().patch(f"/api/m3u/server-groups/{group_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_m3u_server_group(group_id: int) -> dict:
+    """Delete an M3U server group by ID."""
+    return await _client().delete(f"/api/m3u/server-groups/{group_id}/")
+
+
+@mcp.tool()
+async def list_m3u_account_profiles(account_id: int) -> list:
+    """List all stream profiles configured for a specific M3U account."""
+    return await _client().get(f"/api/m3u/accounts/{account_id}/profiles/")
+
+
+@mcp.tool()
+async def get_m3u_account_profile(account_id: int, profile_id: int) -> dict:
+    """Get a single M3U account profile by account ID and profile ID."""
+    return await _client().get(
+        f"/api/m3u/accounts/{account_id}/profiles/{profile_id}/"
+    )
+
+
+@mcp.tool()
+async def create_m3u_account_profile(account_id: int, fields: dict) -> dict:
+    """Create a new profile for an M3U account.
+
+    `fields` should include at minimum a ``name`` and any profile-specific
+    configuration (e.g. stream limits, output format).
+    """
+    return await _client().post(
+        f"/api/m3u/accounts/{account_id}/profiles/", data=fields
+    )
+
+
+@mcp.tool()
+async def update_m3u_account_profile(
+    account_id: int, profile_id: int, fields: dict
+) -> dict:
+    """Partially update an M3U account profile."""
+    return await _client().patch(
+        f"/api/m3u/accounts/{account_id}/profiles/{profile_id}/", data=fields
+    )
+
+
+@mcp.tool()
+async def delete_m3u_account_profile(account_id: int, profile_id: int) -> dict:
+    """Delete an M3U account profile by account ID and profile ID."""
+    return await _client().delete(
+        f"/api/m3u/accounts/{account_id}/profiles/{profile_id}/"
+    )
+
+
+@mcp.tool()
+async def get_m3u_filter(account_id: int, filter_id: int) -> dict:
+    """Get a single M3U stream filter by account ID and filter ID."""
+    return await _client().get(
+        f"/api/m3u/accounts/{account_id}/filters/{filter_id}/"
+    )
+
+
+@mcp.tool()
+async def refresh_m3u_vod(account_id: int) -> dict:
+    """Trigger a VOD library refresh for an M3U account.
+
+    Re-imports movies, series, and episodes from the account's playlist.
+    """
+    return await _client().post(f"/api/m3u/accounts/{account_id}/refresh-vod/", data={})
+
+
+@mcp.tool()
+async def update_m3u_group_settings(account_id: int, fields: dict) -> dict:
+    """Update group-level settings for an M3U account.
+
+    `fields` contains the group settings mapping to apply
+    (e.g. enabling/disabling specific groups from the playlist).
+    """
+    return await _client().patch(
+        f"/api/m3u/accounts/{account_id}/group-settings/", data=fields
+    )
+
+
+@mcp.tool()
+async def refresh_all_m3u_accounts() -> dict:
+    """Trigger a refresh of all configured M3U accounts simultaneously."""
+    return await _client().post("/api/m3u/refresh/", data={})
 
 
 # ---------------------------------------------------------------------------

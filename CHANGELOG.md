@@ -4,6 +4,58 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [0.3.0] - 2026-05-03
+
+### Added
+
+**Accounts / Users**
+- `list_users`, `get_user`, `create_user`, `update_user`, `delete_user` — full user account CRUD
+- `get_current_user`, `update_current_user` — manage the authenticated user's own profile
+- `list_user_groups`, `get_user_group`, `create_user_group`, `update_user_group`, `delete_user_group` — user permission group management
+- `list_permissions` — list all available system permissions
+- `list_api_keys`, `generate_api_key`, `revoke_api_key` — API key management
+
+**Notifications**
+- `list_notifications`, `get_notification`, `get_notification_count` — query system notifications
+- `dismiss_notification`, `dismiss_all_notifications` — mark notifications as read
+- `delete_notification` — remove a notification
+
+**Stream Profiles**
+- `get_stream_profile`, `create_stream_profile`, `update_stream_profile`, `delete_stream_profile` — full CRUD on stream profiles (FFmpeg/Streamlink/VLC configurations)
+
+**Useragents**
+- `list_useragents`, `get_useragent`, `create_useragent`, `update_useragent`, `delete_useragent` — manage user-agent strings
+- `list_timezones` — list all supported timezones
+
+**Connect Integrations**
+- `get_integration`, `create_integration`, `update_integration`, `delete_integration` — full integration CRUD
+- `test_integration` — send a test event to verify an integration
+- `get_integration_subscriptions`, `set_integration_subscriptions` — manage event subscriptions per integration
+- `list_subscriptions`, `get_subscription`, `create_subscription`, `update_subscription`, `delete_subscription` — manage Connect event subscriptions
+- `get_delivery_log` — retrieve a single delivery/webhook log entry
+
+**DVR Recordings (gaps)**
+- `update_recording` — partially update recording metadata fields
+- `update_recording_metadata` — trigger automatic metadata refresh from online sources
+- `refresh_recording_artwork` — re-fetch poster/thumbnail artwork
+- `run_comskip` — run commercial detection on a recording
+- `bulk_delete_upcoming_recordings` — delete all not-yet-started scheduled recordings
+- `get_comskip_config`, `update_comskip_config` — manage DVR comskip configuration
+
+**M3U (gaps)**
+- `list_m3u_server_groups`, `get_m3u_server_group`, `create_m3u_server_group`, `update_m3u_server_group`, `delete_m3u_server_group` — M3U server group management
+- `list_m3u_account_profiles`, `get_m3u_account_profile`, `create_m3u_account_profile`, `update_m3u_account_profile`, `delete_m3u_account_profile` — per-account stream profile management
+- `get_m3u_filter` — retrieve a single M3U filter by ID
+- `refresh_m3u_vod` — trigger VOD library refresh for an M3U account
+- `update_m3u_group_settings` — update group-level settings for an M3U account
+- `refresh_all_m3u_accounts` — trigger a simultaneous refresh of all M3U accounts
+
+### Other
+- `swagger.yaml` updated to latest live schema (renamed from `swagger.json`)
+- README Tools table updated; TODO section added tracking remaining unimplemented endpoints
+
+---
+
 ## [0.2.0] - 2026-04-22
 
 ### Added
