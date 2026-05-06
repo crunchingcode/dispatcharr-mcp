@@ -1467,6 +1467,586 @@ async def refresh_all_m3u_accounts() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# STREAMS CRUD (Tier 2)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def create_stream(
+    name: str,
+    url: str | None = None,
+    m3u_account: int | None = None,
+    channel_group: int | None = None,
+    tvg_id: str | None = None,
+    logo_url: str | None = None,
+    is_adult: bool = False,
+    stream_profile_id: int | None = None,
+) -> dict:
+    """Create a custom stream entry.
+
+    Useful for adding streams that are not imported from an M3U account.
+    Supply at minimum a `name`; `url` is required for the stream to be playable.
+    """
+    data: dict = {"name": name, "is_adult": is_adult}
+    if url is not None:
+        data["url"] = url
+    if m3u_account is not None:
+        data["m3u_account"] = m3u_account
+    if channel_group is not None:
+        data["channel_group"] = channel_group
+    if tvg_id is not None:
+        data["tvg_id"] = tvg_id
+    if logo_url is not None:
+        data["logo_url"] = logo_url
+    if stream_profile_id is not None:
+        data["stream_profile_id"] = stream_profile_id
+    return await _client().post("/api/channels/streams/", data=data)
+
+
+@mcp.tool()
+async def update_stream(stream_id: int, fields: dict) -> dict:
+    """Partially update a stream entry.
+
+    Pass any subset of stream fields as `fields`
+    (e.g. ``{"name": "BBC HD", "url": "https://...", "tvg_id": "bbc1.uk"}``).
+    """
+    return await _client().patch(f"/api/channels/streams/{stream_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_stream(stream_id: int) -> dict:
+    """Delete a stream entry by ID."""
+    return await _client().delete(f"/api/channels/streams/{stream_id}/")
+
+
+@mcp.tool()
+async def bulk_delete_streams(ids: list[int]) -> dict:
+    """Delete multiple streams in a single operation.
+
+    `ids` is a list of integer stream IDs to delete.
+    """
+    return await _client().delete_with_body(
+        "/api/channels/streams/bulk-delete/", data={"ids": ids}
+    )
+
+
+@mcp.tool()
+async def list_stream_groups(
+    m3u_account: int | None = None,
+) -> list:
+    """List stream group names imported from M3U provider accounts.
+
+    Optionally filter by `m3u_account` ID to see groups from a single provider.
+    """
+    return await _client().get(
+        "/api/channels/streams/groups/",
+        params=_clean({"m3u_account": m3u_account}),
+    )
+
+
+@mcp.tool()
+async def list_stream_filter_options() -> dict:
+    """Get available filter option values for the streams list.
+
+    Returns the distinct values available for filtering (accounts, groups, etc.)
+    — useful for building filter UIs or narrowing stream queries.
+    """
+    return await _client().get("/api/channels/streams/filter-options/")
+
+
+@mcp.tool()
+async def list_stream_ids(
+    search: str | None = None,
+    m3u_account: int | None = None,
+    channel_group_name: str | None = None,
+) -> list:
+    """Get just the IDs of streams matching optional filters.
+
+    Lightweight alternative to `list_streams` when you only need IDs,
+    e.g. to pass to `bulk_delete_streams` or `get_streams_by_ids`.
+    """
+    return await _client().get(
+        "/api/channels/streams/ids/",
+        params=_clean(
+            {
+                "search": search,
+                "m3u_account": m3u_account,
+                "channel_group_name": channel_group_name,
+            }
+        ),
+    )
+
+
+@mcp.tool()
+async def get_streams_by_ids(ids: list[int]) -> list:
+    """Fetch full stream details for a specific list of stream IDs.
+
+    Use this to efficiently retrieve a known set of streams by ID
+    (avoids the URL-length limitation of query-string approaches).
+    """
+    return await _client().post(
+        "/api/channels/streams/by-ids/", data={"ids": ids}
+    )
+
+
+# ---------------------------------------------------------------------------
+# CHANNEL BULK OPERATIONS (Tier 2)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def bulk_delete_channels(ids: list[int]) -> dict:
+    """Delete multiple channels in a single operation.
+
+    `ids` is a list of integer channel IDs to delete permanently.
+    """
+    return await _client().delete_with_body(
+        "/api/channels/channels/bulk-delete/", data={"ids": ids}
+    )
+
+
+@mcp.tool()
+async def bulk_update_channels(updates: list[dict]) -> dict:
+    """Update multiple channels in a single operation.
+
+    `updates` is a list of partial channel objects — each must include an
+    ``id`` field plus the fields to change
+    (e.g. ``[{"id": 1, "name": "BBC One"}, {"id": 2, "channel_number": 2}]``).
+    """
+    return await _client().patch(
+        "/api/channels/channels/edit/bulk/", data=updates
+    )
+
+
+@mcp.tool()
+async def bulk_regex_update_channels(
+    channel_ids: list[int],
+    find: str,
+    replace: str,
+    flags: str | None = None,
+) -> dict:
+    """Rename multiple channels using a regex find-and-replace.
+
+    `find` is the regex pattern to match in each channel name.
+    `replace` is the replacement string (supports capture-group references).
+    `flags` is an optional string of regex flags (e.g. ``"i"`` for case-insensitive).
+    """
+    return await _client().post(
+        "/api/channels/channels/edit/bulk-regex/",
+        data=_clean(
+            {
+                "channel_ids": channel_ids,
+                "find": find,
+                "replace": replace,
+                "flags": flags,
+            }
+        ),
+    )
+
+
+@mcp.tool()
+async def assign_channels(
+    channel_ids: list[int],
+    starting_number: float | None = None,
+) -> dict:
+    """Assign sequential channel numbers to a list of channels.
+
+    Channels in `channel_ids` will be numbered consecutively starting from
+    `starting_number` (e.g. 100.0). If `starting_number` is omitted the API
+    picks the next available number.
+    """
+    return await _client().post(
+        "/api/channels/channels/assign/",
+        data=_clean({"channel_ids": channel_ids, "starting_number": starting_number}),
+    )
+
+
+@mcp.tool()
+async def batch_set_epg(associations: list[dict]) -> dict:
+    """Set EPG data associations for multiple channels at once.
+
+    `associations` is a list of mappings, each containing a channel identifier
+    and an EPG data entry ID
+    (e.g. ``[{"channel_id": 1, "epg_data_id": 42}, ...]``).
+    """
+    return await _client().post(
+        "/api/channels/channels/batch-set-epg/",
+        data={"associations": associations},
+    )
+
+
+@mcp.tool()
+async def match_epg_all(channel_ids: list[int] | None = None) -> dict:
+    """Auto-match channels to EPG data using name/TVG-ID heuristics.
+
+    Pass `channel_ids` to limit matching to specific channels, or omit to
+    run the auto-matcher across all channels.
+    """
+    return await _client().post(
+        "/api/channels/channels/match-epg/",
+        data=_clean({"channel_ids": channel_ids}),
+    )
+
+
+@mcp.tool()
+async def set_logos_from_epg() -> dict:
+    """Update channel logos from their matched EPG data for all channels.
+
+    Any channel that has an EPG association will have its logo URL replaced
+    with the artwork URL from the EPG entry.
+    """
+    return await _client().post("/api/channels/channels/set-logos-from-epg/", data={})
+
+
+@mcp.tool()
+async def set_names_from_epg() -> dict:
+    """Update channel names from their matched EPG data for all channels."""
+    return await _client().post("/api/channels/channels/set-names-from-epg/", data={})
+
+
+@mcp.tool()
+async def set_tvg_ids_from_epg() -> dict:
+    """Update channel TVG-IDs from their matched EPG data for all channels."""
+    return await _client().post("/api/channels/channels/set-tvg-ids-from-epg/", data={})
+
+
+@mcp.tool()
+async def create_channels_from_streams_bulk(
+    stream_ids: list[int],
+    channel_profile_ids: list[int] | None = None,
+    starting_channel_number: float | None = None,
+) -> dict:
+    """Create channels in bulk from a list of existing streams.
+
+    Each stream in `stream_ids` gets its own new channel. Optionally assign
+    them to specific `channel_profile_ids` and start numbering from
+    `starting_channel_number`.
+    """
+    return await _client().post(
+        "/api/channels/channels/from-stream/bulk/",
+        data=_clean(
+            {
+                "stream_ids": stream_ids,
+                "channel_profile_ids": channel_profile_ids,
+                "starting_channel_number": starting_channel_number,
+            }
+        ),
+    )
+
+
+@mcp.tool()
+async def get_channels_by_uuids(uuids: list[str]) -> dict:
+    """Retrieve channels by a list of UUIDs.
+
+    Uses a POST body to avoid URL length limits when passing many UUIDs.
+    Returns the same paginated channel format as `list_channels`.
+    """
+    return await _client().post(
+        "/api/channels/channels/by-uuids/", data={"uuids": uuids}
+    )
+
+
+@mcp.tool()
+async def reorder_channel(channel_id: int, insert_after_id: int | None = None) -> dict:
+    """Move a channel to a different position in the lineup.
+
+    `insert_after_id` is the ID of the channel that this channel should
+    appear after. Omit (or pass null) to move the channel to the top of
+    the list.
+    """
+    return await _client().post(
+        f"/api/channels/channels/{channel_id}/reorder/",
+        data=_clean({"insert_after_id": insert_after_id}),
+    )
+
+
+@mcp.tool()
+async def set_channel_epg(channel_id: int, epg_data_id: int) -> dict:
+    """Manually assign a specific EPG data entry to a channel.
+
+    `epg_data_id` is the integer ID of the EPG data entry (from `list_epg_data`)
+    to associate with this channel.
+    """
+    return await _client().post(
+        f"/api/channels/channels/{channel_id}/set-epg/",
+        data={"epg_data_id": epg_data_id},
+    )
+
+
+@mcp.tool()
+async def match_channel_epg(channel_id: int) -> dict:
+    """Auto-match a single channel to EPG data using name/TVG-ID heuristics."""
+    return await _client().post(
+        f"/api/channels/channels/{channel_id}/match-epg/", data={}
+    )
+
+
+# ---------------------------------------------------------------------------
+# CHANNEL PROFILES — full CRUD (Tier 2)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_channel_profile(profile_id: int) -> dict:
+    """Get a single channel profile by ID."""
+    return await _client().get(f"/api/channels/profiles/{profile_id}/")
+
+
+@mcp.tool()
+async def update_channel_profile(profile_id: int, fields: dict) -> dict:
+    """Partially update a channel profile.
+
+    Pass any subset of profile fields as `fields` (e.g. ``{"name": "4K Profile"}``).
+    """
+    return await _client().patch(f"/api/channels/profiles/{profile_id}/", data=fields)
+
+
+@mcp.tool()
+async def duplicate_channel_profile(profile_id: int) -> dict:
+    """Duplicate an existing channel profile, including its channel memberships.
+
+    Returns the newly created profile.
+    """
+    return await _client().post(
+        f"/api/channels/profiles/{profile_id}/duplicate/", data={}
+    )
+
+
+@mcp.tool()
+async def bulk_update_profile_channels(
+    profile_id: int, channels: list[dict]
+) -> dict:
+    """Update channel membership/settings for multiple channels in a profile.
+
+    `channels` is a list of partial channel-profile membership objects
+    (e.g. ``[{"channel_id": 1, "enabled": True}, ...]``).
+    """
+    return await _client().patch(
+        f"/api/channels/profiles/{profile_id}/channels/bulk-update/",
+        data={"channels": channels},
+    )
+
+
+@mcp.tool()
+async def update_profile_channel(
+    profile_id: int, channel_id: int, fields: dict
+) -> dict:
+    """Update a single channel's membership settings within a profile.
+
+    Pass any subset of membership fields as `fields`
+    (e.g. ``{"enabled": False}``).
+    """
+    return await _client().patch(
+        f"/api/channels/profiles/{profile_id}/channels/{channel_id}/", data=fields
+    )
+
+
+# ---------------------------------------------------------------------------
+# CORE SETTINGS — full CRUD (Tier 2)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_setting(setting_id: int) -> dict:
+    """Get a single core setting by ID."""
+    return await _client().get(f"/api/core/settings/{setting_id}/")
+
+
+@mcp.tool()
+async def update_setting(setting_id: int, fields: dict) -> dict:
+    """Partially update a core setting.
+
+    Pass any subset of setting fields as `fields`
+    (e.g. ``{"value": "new-value"}``).
+    """
+    return await _client().patch(f"/api/core/settings/{setting_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_setting(setting_id: int) -> dict:
+    """Delete a core setting by ID (resets it to the built-in default)."""
+    return await _client().delete(f"/api/core/settings/{setting_id}/")
+
+
+@mcp.tool()
+async def check_settings(fields: dict | None = None) -> dict:
+    """Validate the current core settings configuration.
+
+    Optionally pass `fields` to check proposed setting values before applying them.
+    Returns a validation report with any errors or warnings.
+    """
+    return await _client().post("/api/core/settings/check/", data=fields or {})
+
+
+@mcp.tool()
+async def get_env_settings() -> dict:
+    """Get environment-level settings (read-only, sourced from env vars / config files)."""
+    return await _client().get("/api/core/settings/env/")
+
+
+@mcp.tool()
+async def rehash_streams() -> dict:
+    """Regenerate stream hashes for all streams.
+
+    Forces Dispatcharr to recompute the stream hash used for deduplication.
+    Useful after bulk imports or URL changes.
+    """
+    return await _client().post("/api/core/rehash-streams/", data={})
+
+
+# ---------------------------------------------------------------------------
+# EPG PROGRAMS — full CRUD (Tier 2)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_epg_program(program_id: int) -> dict:
+    """Get a single EPG program schedule entry by ID."""
+    return await _client().get(f"/api/epg/programs/{program_id}/")
+
+
+@mcp.tool()
+async def create_epg_program(
+    tvg_id: str,
+    start_time: str,
+    end_time: str,
+    title: str,
+    sub_title: str | None = None,
+    description: str | None = None,
+) -> dict:
+    """Create a new EPG program entry.
+
+    `tvg_id` links the program to an EPG data channel.
+    `start_time` and `end_time` are ISO 8601 datetime strings
+    (e.g. ``"2026-05-05T20:00:00Z"``).
+    """
+    return await _client().post(
+        "/api/epg/programs/",
+        data=_clean(
+            {
+                "tvg_id": tvg_id,
+                "start_time": start_time,
+                "end_time": end_time,
+                "title": title,
+                "sub_title": sub_title,
+                "description": description,
+            }
+        ),
+    )
+
+
+@mcp.tool()
+async def update_epg_program(program_id: int, fields: dict) -> dict:
+    """Partially update an EPG program entry.
+
+    Pass any subset of program fields as `fields`
+    (e.g. ``{"title": "New Title", "description": "Updated synopsis"}``).
+    """
+    return await _client().patch(f"/api/epg/programs/{program_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_epg_program(program_id: int) -> dict:
+    """Delete an EPG program entry by ID."""
+    return await _client().delete(f"/api/epg/programs/{program_id}/")
+
+
+@mcp.tool()
+async def import_epg(epgdata_id: int) -> dict:
+    """Trigger an import/refresh of programs for a specific EPG data entry.
+
+    `epgdata_id` is the ID of the EPG data record (channel metadata) whose
+    program schedule should be re-fetched from its source.
+    """
+    return await _client().post("/api/epg/import/", data={"id": epgdata_id})
+
+
+@mcp.tool()
+async def get_epg_data_entry(entry_id: int) -> dict:
+    """Get a single EPG data entry (channel metadata record) by ID."""
+    return await _client().get(f"/api/epg/epgdata/{entry_id}/")
+
+
+# ---------------------------------------------------------------------------
+# BACKUPS (Tier 2)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_backups() -> list:
+    """List all available backup files."""
+    return await _client().get("/api/backups/")
+
+
+@mcp.tool()
+async def create_backup() -> dict:
+    """Create a new backup of the Dispatcharr database and configuration.
+
+    The backup is saved server-side and visible via `list_backups`.
+    Returns a task ID that can be polled with `get_backup_status`.
+    """
+    return await _client().post("/api/backups/create/", data={})
+
+
+@mcp.tool()
+async def restore_backup(filename: str) -> dict:
+    """Restore Dispatcharr from a backup file.
+
+    `filename` is the backup filename as returned by `list_backups`.
+    This will overwrite current data — use with caution.
+    Returns a task ID that can be polled with `get_backup_status`.
+    """
+    return await _client().post(f"/api/backups/{filename}/restore/", data={})
+
+
+@mcp.tool()
+async def delete_backup(filename: str) -> dict:
+    """Delete a backup file by filename.
+
+    `filename` is the backup filename as returned by `list_backups`.
+    This permanently removes the backup from the server.
+    """
+    return await _client().delete(f"/api/backups/{filename}/delete/")
+
+
+@mcp.tool()
+async def get_backup_schedule() -> dict:
+    """Get the current automated backup schedule configuration."""
+    return await _client().get("/api/backups/schedule/")
+
+
+@mcp.tool()
+async def update_backup_schedule(fields: dict) -> dict:
+    """Update the automated backup schedule configuration.
+
+    Pass the full schedule configuration as `fields`
+    (e.g. ``{"enabled": True, "interval_hours": 24, "keep_count": 7}``).
+    """
+    return await _client().put("/api/backups/schedule/update/", data=fields)
+
+
+@mcp.tool()
+async def get_backup_status(task_id: str) -> dict:
+    """Poll the status of a running backup or restore task.
+
+    `task_id` is the task identifier returned by `create_backup` or
+    `restore_backup`.
+    """
+    return await _client().get(f"/api/backups/status/{task_id}/")
+
+
+@mcp.tool()
+async def get_backup_download_token(filename: str) -> dict:
+    """Get a time-limited download token for a backup file.
+
+    `filename` is the backup filename as returned by `list_backups`.
+    Returns a token that can be used to download the file without
+    re-authenticating.
+    """
+    return await _client().get(f"/api/backups/{filename}/download-token/")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
