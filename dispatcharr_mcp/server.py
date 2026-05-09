@@ -1,17 +1,20 @@
 """Dispatcharr MCP server — exposes Dispatcharr IPTV management to AI agents.
 
 Tools are grouped by domain:
-  • Accounts/Users — users, groups, permissions, API keys
-  • Channels       — list, get, create, update, delete channels & groups
-  • Streams        — list/get raw M3U streams by source
-  • Proxy          — live stream status and control (change, stop, failover)
-  • EPG            — EPG sources and programme data
-  • M3U Accounts   — manage M3U provider accounts, filters, profiles, server-groups
-  • VOD            — movies, series, episodes
-  • System         — settings, stream profiles, useragents, system events
-  • Notifications  — system notifications
-  • Connect        — integrations, subscriptions, delivery logs
-  • DVR            — recordings, series rules, recurring rules
+  • Accounts/Users  — users, groups, permissions, API keys
+  • Channels        — list, get, create, update, delete channels & groups
+  • Channel Logos   — logo entries for channels (create/update/delete/cleanup)
+  • Streams         — list/get raw M3U streams by source
+  • Proxy           — live stream status and control (change, stop, failover)
+  • EPG             — EPG sources and programme data
+  • M3U Accounts    — manage M3U provider accounts, filters, profiles, server-groups
+  • VOD             — movies, series, episodes, unified list, provider metadata
+  • VOD Logos       — artwork logos for VOD content (create/update/delete/cleanup)
+  • System          — settings, stream profiles, useragents, system events
+  • Notifications   — system notifications
+  • Connect         — integrations, subscriptions, delivery logs
+  • DVR             — recordings, series rules, recurring rules
+  • Plugins         — installed plugins and plugin repositories
 """
 
 from mcp.server.fastmcp import FastMCP
@@ -308,6 +311,41 @@ async def update_epg_source(source_id: int, fields: dict) -> dict:
 async def delete_epg_source(source_id: int) -> dict:
     """Delete an EPG source by ID."""
     return await _client().delete(f"/api/epg/sources/{source_id}/")
+
+
+@mcp.tool()
+async def upload_epg_source(
+    name: str,
+    source_type: str = "xmltv",
+    url: str | None = None,
+    file_path: str | None = None,
+    is_active: bool = True,
+    refresh_interval: int | None = None,
+    priority: int | None = None,
+    api_key: str | None = None,
+) -> dict:
+    """Create an EPG source via the upload endpoint.
+
+    Functionally equivalent to `create_epg_source` but posts to
+    ``/api/epg/sources/upload/``.  Use this when you want to register a
+    source by its server-side `file_path` (a path already accessible on
+    the Dispatcharr host) rather than a remote URL.
+
+    `source_type` must be one of: ``xmltv`` (default), ``schedules_direct``,
+    or ``dummy``.
+    """
+    data: dict = {"name": name, "source_type": source_type, "is_active": is_active}
+    if url is not None:
+        data["url"] = url
+    if file_path is not None:
+        data["file_path"] = file_path
+    if api_key is not None:
+        data["api_key"] = api_key
+    if refresh_interval is not None:
+        data["refresh_interval"] = refresh_interval
+    if priority is not None:
+        data["priority"] = priority
+    return await _client().post("/api/epg/sources/upload/", data=data)
 
 
 @mcp.tool()
@@ -893,6 +931,452 @@ async def delete_channel_profile(profile_id: int) -> dict:
 async def list_hdhr_devices() -> list:
     """List all configured HDHomeRun virtual tuner devices."""
     return await _client().get("/api/hdhr/devices/")
+
+
+@mcp.tool()
+async def get_hdhr_device(device_id: int) -> dict:
+    """Get a single HDHomeRun virtual tuner device by ID."""
+    return await _client().get(f"/api/hdhr/devices/{device_id}/")
+
+
+@mcp.tool()
+async def create_hdhr_device(
+    device_id: str,
+    friendly_name: str | None = None,
+    tuner_count: int | None = None,
+) -> dict:
+    """Create a new HDHomeRun virtual tuner device.
+
+    `device_id` is the unique device identifier string (required).
+    `friendly_name` is an optional human-readable label.
+    `tuner_count` sets the number of virtual tuners (defaults to the
+    Dispatcharr server default if omitted).
+    """
+    data: dict = {"device_id": device_id}
+    if friendly_name is not None:
+        data["friendly_name"] = friendly_name
+    if tuner_count is not None:
+        data["tuner_count"] = tuner_count
+    return await _client().post("/api/hdhr/devices/", data=data)
+
+
+@mcp.tool()
+async def update_hdhr_device(device_id: int, fields: dict) -> dict:
+    """Partially update an HDHomeRun virtual tuner device.
+
+    Pass any subset of device fields as `fields`
+    (e.g. ``{"friendly_name": "Living Room", "tuner_count": 4}``).
+    """
+    return await _client().patch(f"/api/hdhr/devices/{device_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_hdhr_device(device_id: int) -> dict:
+    """Delete an HDHomeRun virtual tuner device by ID."""
+    return await _client().delete(f"/api/hdhr/devices/{device_id}/")
+
+
+# ---------------------------------------------------------------------------
+# CHANNEL LOGOS
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_channel_logos(
+    search: str | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
+) -> dict:
+    """List channel logo entries stored in Dispatcharr.
+
+    Logos can be referenced by channels to display artwork in EPG clients.
+    Use `search` to filter by name, and `page`/`page_size` for pagination.
+    """
+    return await _client().get(
+        "/api/channels/logos/",
+        params=_clean({"search": search, "page": page, "page_size": page_size}),
+    )
+
+
+@mcp.tool()
+async def get_channel_logo(logo_id: int) -> dict:
+    """Get a single channel logo entry by ID."""
+    return await _client().get(f"/api/channels/logos/{logo_id}/")
+
+
+@mcp.tool()
+async def create_channel_logo(name: str, url: str) -> dict:
+    """Create a channel logo entry from a remote URL.
+
+    `name` is a human-readable label.
+    `url` is the public HTTP(S) URL of the logo image.
+    Dispatcharr will cache the image server-side.
+
+    Note: to upload a local file instead, use the Dispatcharr web UI —
+    the file-upload endpoint requires multipart support not yet available
+    in this MCP server.
+    """
+    return await _client().post("/api/channels/logos/", data={"name": name, "url": url})
+
+
+@mcp.tool()
+async def update_channel_logo(logo_id: int, fields: dict) -> dict:
+    """Partially update a channel logo entry.
+
+    Pass any subset of logo fields as `fields`
+    (e.g. ``{"name": "BBC One HD", "url": "https://..."}``).
+    """
+    return await _client().patch(f"/api/channels/logos/{logo_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_channel_logo(logo_id: int) -> dict:
+    """Delete a channel logo entry by ID."""
+    return await _client().delete(f"/api/channels/logos/{logo_id}/")
+
+
+@mcp.tool()
+async def bulk_delete_channel_logos(ids: list[int]) -> dict:
+    """Delete multiple channel logos in one request.
+
+    `ids` is a list of integer logo IDs to remove.
+    """
+    return await _client().delete("/api/channels/logos/bulk-delete/", data={"ids": ids})
+
+
+@mcp.tool()
+async def cleanup_channel_logos() -> dict:
+    """Delete all channel logos that are not assigned to any channel.
+
+    Useful for tidying up logos that were imported or uploaded but never
+    used. Returns the number of logos removed.
+    """
+    return await _client().post("/api/channels/logos/cleanup/", data={})
+
+
+# ---------------------------------------------------------------------------
+# PROXY EXTRAS — HLS and VOD proxy control
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def change_hls_stream(channel_id: str) -> dict:
+    """Force an HLS channel to switch to its next available stream source.
+
+    Use this when an HLS stream is failing or buffering — Dispatcharr will
+    immediately try the next source in the failover list.
+    `channel_id` is the channel's string identifier used by the proxy.
+    """
+    return await _client().post(f"/proxy/hls/change_stream/{channel_id}")
+
+
+@mcp.tool()
+async def get_vod_proxy_stats() -> dict:
+    """Get live statistics for all active VOD proxy sessions.
+
+    Returns session counts, content being streamed, and bandwidth metrics
+    for every VOD stream currently in progress.
+    """
+    return await _client().get("/proxy/vod/stats/")
+
+
+@mcp.tool()
+async def stop_vod_client() -> dict:
+    """Stop a VOD client connection using the stop signal mechanism.
+
+    Sends a stop signal to terminate an active VOD client session.
+    """
+    return await _client().post("/proxy/vod/stop_client/", data={})
+
+
+# ---------------------------------------------------------------------------
+# DVR — get_recurring_rule and bulk series rule removal
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_recurring_rule(rule_id: int) -> dict:
+    """Get a single recurring DVR recording rule by ID."""
+    return await _client().get(f"/api/channels/recurring-rules/{rule_id}/")
+
+
+@mcp.tool()
+async def bulk_remove_series_rules(tvg_ids: list[str]) -> dict:
+    """Delete future scheduled recordings for one or more series rules.
+
+    `tvg_ids` is a list of TVG-ID strings whose queued (not yet started)
+    recordings should be removed.  Useful for cancelling a rule's upcoming
+    recordings without fully deleting the rule itself.
+    """
+    return await _client().post(
+        "/api/channels/series-rules/bulk-remove/", data={"tvg_ids": tvg_ids}
+    )
+
+
+# ---------------------------------------------------------------------------
+# VOD EXTRAS — unified VOD list, categories, episodes, provider info
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_all_vod(
+    search: str | None = None,
+    ordering: str | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
+) -> dict:
+    """List all VOD content (movies and series) in a single unified list.
+
+    Use `search` to filter by title, `ordering` to sort (e.g. ``"title"``
+    or ``"-year"``), and `page`/`page_size` for pagination.
+    """
+    return await _client().get(
+        "/api/vod/all/",
+        params=_clean(
+            {"search": search, "ordering": ordering, "page": page, "page_size": page_size}
+        ),
+    )
+
+
+@mcp.tool()
+async def get_vod_item(item_id: int) -> dict:
+    """Get a single VOD item (movie or series) from the unified VOD list by ID."""
+    return await _client().get(f"/api/vod/all/{item_id}/")
+
+
+@mcp.tool()
+async def get_vod_category(category_id: int) -> dict:
+    """Get a single VOD category by ID."""
+    return await _client().get(f"/api/vod/categories/{category_id}/")
+
+
+@mcp.tool()
+async def get_episode(episode_id: int) -> dict:
+    """Get details for a specific VOD episode by ID."""
+    return await _client().get(f"/api/vod/episodes/{episode_id}/")
+
+
+@mcp.tool()
+async def get_series_episodes(series_id: int) -> list:
+    """Get all episodes belonging to a TV series.
+
+    Returns the full episode list for the given series, grouped by season
+    where the API supports it.
+    """
+    return await _client().get(f"/api/vod/series/{series_id}/episodes/")
+
+
+@mcp.tool()
+async def get_movie_provider_info(movie_id: int) -> dict:
+    """Get external provider metadata for a VOD movie.
+
+    Returns data from the configured metadata provider (e.g. TMDB/TVDB)
+    for the given movie, including synopsis, cast, artwork URLs, and ratings.
+    """
+    return await _client().get(f"/api/vod/movies/{movie_id}/provider-info/")
+
+
+@mcp.tool()
+async def get_series_provider_info(series_id: int) -> dict:
+    """Get external provider metadata for a VOD TV series.
+
+    Returns data from the configured metadata provider (e.g. TMDB/TVDB)
+    for the given series, including synopsis, cast, artwork URLs, and ratings.
+    """
+    return await _client().get(f"/api/vod/series/{series_id}/provider-info/")
+
+
+# ---------------------------------------------------------------------------
+# VOD LOGOS
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_vod_logos(
+    search: str | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
+) -> dict:
+    """List VOD logo entries stored in Dispatcharr.
+
+    VOD logos are artwork images associated with movies and series.
+    Use `search` to filter by name, and `page`/`page_size` for pagination.
+    """
+    return await _client().get(
+        "/api/vod/vodlogos/",
+        params=_clean({"search": search, "page": page, "page_size": page_size}),
+    )
+
+
+@mcp.tool()
+async def get_vod_logo(logo_id: int) -> dict:
+    """Get a single VOD logo entry by ID."""
+    return await _client().get(f"/api/vod/vodlogos/{logo_id}/")
+
+
+@mcp.tool()
+async def create_vod_logo(name: str, url: str) -> dict:
+    """Create a VOD logo entry from a remote URL.
+
+    `name` is a human-readable label.
+    `url` is the public HTTP(S) URL of the logo image.
+    Dispatcharr will cache the image server-side.
+    """
+    return await _client().post("/api/vod/vodlogos/", data={"name": name, "url": url})
+
+
+@mcp.tool()
+async def update_vod_logo(logo_id: int, fields: dict) -> dict:
+    """Partially update a VOD logo entry.
+
+    Pass any subset of logo fields as `fields`
+    (e.g. ``{"name": "Better Call Saul", "url": "https://..."}``).
+    """
+    return await _client().patch(f"/api/vod/vodlogos/{logo_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_vod_logo(logo_id: int) -> dict:
+    """Delete a VOD logo entry by ID."""
+    return await _client().delete(f"/api/vod/vodlogos/{logo_id}/")
+
+
+@mcp.tool()
+async def bulk_delete_vod_logos(ids: list[int]) -> dict:
+    """Delete multiple VOD logos in one request.
+
+    `ids` is a list of integer logo IDs to remove.
+    """
+    return await _client().delete("/api/vod/vodlogos/bulk-delete/", data={"ids": ids})
+
+
+@mcp.tool()
+async def cleanup_vod_logos() -> dict:
+    """Delete all VOD logos that are not assigned to any movie or series.
+
+    Useful for tidying up logos that were imported or uploaded but never
+    used. Returns the number of logos removed.
+    """
+    return await _client().post("/api/vod/vodlogos/cleanup/", data={})
+
+
+# ---------------------------------------------------------------------------
+# PLUGINS
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_plugins() -> dict:
+    """List all installed Dispatcharr plugins.
+
+    Returns a dict of installed plugins keyed by plugin key, including
+    enabled state, version, description, and available actions.
+    """
+    return await _client().get("/api/plugins/plugins/")
+
+
+@mcp.tool()
+async def enable_plugin(key: str) -> dict:
+    """Toggle the enabled/disabled state of a plugin.
+
+    `key` is the plugin's unique string identifier (e.g. ``"my_plugin"``).
+    Sends a POST to the plugin's enabled endpoint; the server toggles the
+    current state and returns the new enabled status.
+    """
+    return await _client().post(f"/api/plugins/plugins/{key}/enabled/", data={})
+
+
+@mcp.tool()
+async def run_plugin(key: str) -> dict:
+    """Manually trigger a plugin's main action.
+
+    `key` is the plugin's unique string identifier.  The exact behaviour
+    depends on the plugin — consult `list_plugins` for what each plugin does.
+    """
+    return await _client().post(f"/api/plugins/plugins/{key}/run/", data={})
+
+
+@mcp.tool()
+async def configure_plugin(key: str, settings: dict) -> dict:
+    """Save configuration settings for a plugin.
+
+    `key` is the plugin's unique string identifier.
+    `settings` is a dict of key/value pairs — the accepted fields depend on
+    the individual plugin.  Consult the plugin's documentation or the
+    Dispatcharr web UI for the expected schema.
+    """
+    return await _client().post(f"/api/plugins/plugins/{key}/settings/", data=settings)
+
+
+@mcp.tool()
+async def import_plugin(data: dict | None = None) -> dict:
+    """Import a plugin into Dispatcharr.
+
+    `data` is an optional dict of import parameters (e.g. source URL or
+    plugin manifest).  The exact fields depend on the plugin being imported.
+    """
+    return await _client().post("/api/plugins/plugins/import/", data=data or {})
+
+
+@mcp.tool()
+async def reload_plugins() -> dict:
+    """Reload all installed plugins without restarting Dispatcharr.
+
+    Use this after manually editing plugin files or after an import to
+    pick up any changes.
+    """
+    return await _client().post("/api/plugins/plugins/reload/", data={})
+
+
+@mcp.tool()
+async def delete_plugin(key: str) -> dict:
+    """Delete an installed plugin by key.
+
+    `key` is the plugin's unique string identifier.
+    This removes the plugin and its configuration from Dispatcharr.
+    """
+    return await _client().delete(f"/api/plugins/plugins/{key}/delete/")
+
+
+@mcp.tool()
+async def list_plugin_repos() -> list:
+    """List all configured plugin repositories."""
+    return await _client().get("/api/plugins/repos/")
+
+
+@mcp.tool()
+async def create_plugin_repo(url: str, public_key: str | None = None) -> dict:
+    """Add a new plugin repository by manifest URL.
+
+    `url` is the URL of the repository manifest.  Dispatcharr fetches
+    and validates the manifest on creation.
+    `public_key` is the optional PGP public key used to verify plugin
+    signatures from this repository.
+    """
+    return await _client().post(
+        "/api/plugins/repos/", data=_clean({"url": url, "public_key": public_key})
+    )
+
+
+@mcp.tool()
+async def update_plugin_repo(repo_id: int, fields: dict) -> dict:
+    """Update a plugin repository configuration.
+
+    `repo_id` is the integer ID of the repository.
+    Pass the full updated configuration as `fields`
+    (e.g. ``{"url": "https://...", "public_key": "...", "enabled": True}``).
+    """
+    return await _client().put(f"/api/plugins/repos/{repo_id}/", data=fields)
+
+
+@mcp.tool()
+async def delete_plugin_repo(repo_id: int) -> dict:
+    """Remove a plugin repository by ID.
+
+    This removes the repository registration from Dispatcharr.  Plugins
+    already installed from this repo are not automatically removed.
+    """
+    return await _client().delete(f"/api/plugins/repos/{repo_id}/")
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,70 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.0.0] - 2026-05-09
+
+### Added
+
+**Channel Logos (full CRUD)**
+- `list_channel_logos` — list all channel logos with pagination
+- `get_channel_logo` — retrieve a single channel logo by ID
+- `create_channel_logo` — create a new logo (URL-based or named placeholder)
+- `update_channel_logo` — partially update an existing channel logo
+- `delete_channel_logo` — delete a channel logo by ID
+- `bulk_delete_channel_logos` — delete multiple logos by ID list
+- `cleanup_channel_logos` — delete all logos not assigned to any channel
+
+**HDHomeRun Devices (full CRUD)**
+- `get_hdhr_device` — retrieve a single HDHomeRun device by ID
+- `create_hdhr_device` — register a new HDHomeRun device
+- `update_hdhr_device` — partially update an HDHomeRun device
+- `delete_hdhr_device` — remove an HDHomeRun device
+
+**Proxy Extras**
+- `change_hls_stream` — switch the active HLS stream for a channel client
+- `get_vod_proxy_stats` — retrieve VOD proxy connection statistics
+- `stop_vod_client` — terminate a specific VOD proxy client session
+
+**DVR Extras**
+- `get_recurring_rule` — retrieve a single recurring recording rule by ID
+- `bulk_remove_series_rules` — delete multiple series rules by TVG-ID list
+
+**EPG**
+- `upload_epg_source` — create an EPG source via JSON (name, source_type, url/file_path, refresh_interval, priority)
+
+**VOD (full suite)**
+- `list_all_vod` — list all VOD items (movies + series) with optional type filter
+- `get_vod_item` — retrieve a single VOD item by ID
+- `get_vod_category` — retrieve a single VOD category by ID
+- `get_episode` — retrieve a single episode by ID
+- `get_series_episodes` — list all episodes belonging to a series
+- `get_movie_provider_info` — get provider metadata for a movie
+- `get_series_provider_info` — get provider metadata for a series
+
+**VOD Logos (full CRUD)**
+- `list_vod_logos` — list all VOD logos
+- `get_vod_logo` — retrieve a single VOD logo by ID
+- `create_vod_logo` — create a new VOD logo (URL-based)
+- `update_vod_logo` — partially update a VOD logo
+- `delete_vod_logo` — delete a VOD logo by ID
+- `bulk_delete_vod_logos` — delete multiple VOD logos by ID list
+- `cleanup_vod_logos` — delete all VOD logos not in use
+
+**Plugins (full management + repos)**
+- `list_plugins` — list all installed plugins
+- `enable_plugin` — enable or disable a plugin by name
+- `run_plugin` — execute a plugin by name
+- `configure_plugin` — set configuration for a plugin
+- `import_plugin` — import a plugin from a URL
+- `reload_plugins` — reload all plugins from disk
+- `delete_plugin` — remove a plugin by name
+- `list_plugin_repos` — list configured plugin repositories
+- `create_plugin_repo` — register a new plugin repository by manifest URL
+- `update_plugin_repo` — update plugin repository settings
+- `delete_plugin_repo` — remove a plugin repository
+
+---
+
 ## [1.0.0] - 2026-05-06
 
 ### Added
