@@ -4,6 +4,38 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.1.0] - 2026-05-23
+
+Dispatcharr shipped new API endpoints in its latest release; this version adds MCP tools for all of them.
+
+### Added
+
+**Channels**
+- `get_channel_stream_stats` — minimal stats delta for streams attached to a channel (used for live health polling)
+- `get_channels_in_number_range` — find all channels occupying a channel number range (including override-based assignments)
+
+**Streams**
+- `preview_regex_streams` — preview regex find/replace results for a channel group before committing a bulk rename
+
+**DVR Series Rules**
+- `preview_series_rule` — preview which EPG programmes a series rule would match before saving it
+
+**EPG**
+- `search_epg_programs` — search EPG programme entries with rich filters (title, description, channel, tvg_id, time window, and more)
+
+**Output Profiles (full CRUD)**
+- `list_output_profiles` — list all configured output profiles
+- `get_output_profile` — retrieve a single output profile by ID
+- `create_output_profile` — create a new output profile (command + parameters)
+- `update_output_profile` — partially update an output profile
+- `delete_output_profile` — delete an output profile (locked built-ins are protected)
+
+**M3U Accounts**
+- `get_m3u_auto_channels_count` — preview how many auto-created channels would be removed if an account were deleted with cleanup enabled
+- `repack_m3u_group` — re-pack visible channels in an M3U account group into the group's configured number range
+
+---
+
 ## [2.0.0] - 2026-05-09
 
 ### Added

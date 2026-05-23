@@ -112,6 +112,40 @@ async def get_channel_streams(channel_id: int) -> dict:
     return await _client().get(f"/api/channels/channels/{channel_id}/streams/")
 
 
+@mcp.tool()
+async def get_channel_stream_stats(
+    channel_id: int,
+    ids: list[int] | None = None,
+    since: str | None = None,
+) -> dict:
+    """Return a minimal stats delta for streams attached to a channel.
+
+    Used to poll live stream health without fetching full stream objects.
+    `ids` filters to specific stream IDs; `since` is an ISO-8601 timestamp
+    for incremental updates.
+    """
+    return await _client().get(
+        f"/api/channels/channels/{channel_id}/streams/stats/",
+        params=_clean({"ids": ids, "since": since}),
+    )
+
+
+@mcp.tool()
+async def get_channels_in_number_range(
+    start: int,
+    end: int | None = None,
+) -> dict:
+    """Get channels occupying channel numbers in a range.
+
+    `start` is required. `end` defaults to `start` if omitted (single number lookup).
+    Includes channels whose effective number is set via an override.
+    """
+    return await _client().get(
+        "/api/channels/channels/numbers-in-range/",
+        params=_clean({"start": start, "end": end}),
+    )
+
+
 # ---------------------------------------------------------------------------
 # CHANNEL GROUPS
 # ---------------------------------------------------------------------------
@@ -196,6 +230,35 @@ async def create_channel_from_stream(
     if channel_profile_ids is not None:
         data["channel_profile_ids"] = channel_profile_ids
     return await _client().post("/api/channels/channels/from-stream/", data=data)
+
+
+@mcp.tool()
+async def preview_regex_streams(
+    channel_group: str,
+    find: str | None = None,
+    match: str | None = None,
+    replace: str | None = None,
+    exclude: str | None = None,
+    limit: int | None = None,
+) -> dict:
+    """Preview regex find/replace results for streams in a channel group.
+
+    Shows what names would be produced before committing a bulk regex rename.
+    `channel_group` is required. `find` and `replace` define the substitution;
+    `match` filters which stream names are affected; `exclude` skips matching
+    names; `limit` caps the number of results returned.
+    """
+    return await _client().get(
+        "/api/channels/streams/regex-preview/",
+        params=_clean({
+            "channel_group": channel_group,
+            "find": find,
+            "match": match,
+            "replace": replace,
+            "exclude": exclude,
+            "limit": limit,
+        }),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +428,68 @@ async def list_epg_programs(
     return await _client().get(
         "/api/epg/programs/",
         params=_clean({"page": page, "page_size": page_size}),
+    )
+
+
+@mcp.tool()
+async def search_epg_programs(
+    title: str | None = None,
+    title_regex: str | None = None,
+    title_whole_words: bool | None = None,
+    description: str | None = None,
+    description_regex: str | None = None,
+    description_whole_words: bool | None = None,
+    channel: str | None = None,
+    channel_id: int | None = None,
+    tvg_id: str | None = None,
+    epg_source: int | None = None,
+    group: str | None = None,
+    stream: int | None = None,
+    airing_at: str | None = None,
+    start_after: str | None = None,
+    start_before: str | None = None,
+    end_after: str | None = None,
+    end_before: str | None = None,
+    fields: str | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
+) -> dict:
+    """Search EPG programme entries with rich filters.
+
+    All filters are optional and combinable:
+    - `title` / `title_regex` — match programme titles (regex enables `title_whole_words`)
+    - `description` / `description_regex` — match descriptions
+    - `channel` — channel name substring; `channel_id` — integer channel ID
+    - `tvg_id` — EPG TVG-ID; `epg_source` — EPG source ID
+    - `group` — channel group name; `stream` — stream ID
+    - `airing_at` — ISO-8601 datetime (programme must be airing at that instant)
+    - `start_after` / `start_before` / `end_after` / `end_before` — time window filters
+    - `fields` — comma-separated list of fields to include in the response
+    """
+    return await _client().get(
+        "/api/epg/programs/search/",
+        params=_clean({
+            "title": title,
+            "title_regex": title_regex,
+            "title_whole_words": title_whole_words,
+            "description": description,
+            "description_regex": description_regex,
+            "description_whole_words": description_whole_words,
+            "channel": channel,
+            "channel_id": channel_id,
+            "tvg_id": tvg_id,
+            "epg_source": epg_source,
+            "group": group,
+            "stream": stream,
+            "airing_at": airing_at,
+            "start_after": start_after,
+            "start_before": start_before,
+            "end_after": end_after,
+            "end_before": end_before,
+            "fields": fields,
+            "page": page,
+            "page_size": page_size,
+        }),
     )
 
 
@@ -785,6 +910,37 @@ async def evaluate_series_rules(tvg_id: str | None = None) -> dict:
     return await _client().post(
         "/api/channels/series-rules/evaluate/",
         data=_clean({"tvg_id": tvg_id}),
+    )
+
+
+@mcp.tool()
+async def preview_series_rule(
+    tvg_id: str | None = None,
+    title: str | None = None,
+    title_mode: str = "exact",
+    description: str | None = None,
+    description_mode: str = "contains",
+    mode: str = "all",
+    limit: int | None = None,
+) -> dict:
+    """Preview which EPG programmes a series rule would match before saving it.
+
+    `tvg_id` scopes the search to a specific EPG channel; omit to search all
+    channels. `title_mode` is one of ``exact``, ``contains``, or ``regex``.
+    `description_mode` is one of ``contains`` or ``regex``.
+    `mode` is ``all`` or ``new``. `limit` caps results (default 25, max 100).
+    """
+    return await _client().post(
+        "/api/channels/series-rules/preview/",
+        data=_clean({
+            "tvg_id": tvg_id,
+            "title": title,
+            "title_mode": title_mode,
+            "description": description,
+            "description_mode": description_mode,
+            "mode": mode,
+            "limit": limit,
+        }),
     )
 
 
@@ -1950,6 +2106,35 @@ async def refresh_all_m3u_accounts() -> dict:
     return await _client().post("/api/m3u/refresh/", data={})
 
 
+@mcp.tool()
+async def get_m3u_auto_channels_count(account_id: int) -> dict:
+    """Preview how many auto-created channels would be removed if an M3U account
+    were deleted with the cleanup_channels option enabled.
+
+    Returns the count without making any changes.
+    """
+    return await _client().get(
+        f"/api/m3u/accounts/{account_id}/auto-created-channels-count/"
+    )
+
+
+@mcp.tool()
+async def repack_m3u_group(
+    account_id: int,
+    channel_group_id: int,
+) -> dict:
+    """Re-pack visible channels in an M3U account group into the group's [start, end] range.
+
+    This redistributes channel numbers evenly across the group's configured
+    number range without changing stream assignments.
+    """
+    return await _client().post(
+        f"/api/m3u/accounts/{account_id}/repack-group/",
+        params={"channel_group_id": channel_group_id},
+        data={},
+    )
+
+
 # ---------------------------------------------------------------------------
 # STREAMS CRUD (Tier 2)
 # ---------------------------------------------------------------------------
@@ -2449,6 +2634,73 @@ async def import_epg(epgdata_id: int) -> dict:
 async def get_epg_data_entry(entry_id: int) -> dict:
     """Get a single EPG data entry (channel metadata record) by ID."""
     return await _client().get(f"/api/epg/epgdata/{entry_id}/")
+
+
+# ---------------------------------------------------------------------------
+# CORE — OUTPUT PROFILES
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_output_profiles() -> list:
+    """List all configured output profiles.
+
+    Output profiles define the command and parameters used to transcode
+    or pass-through a stream (e.g. different FFmpeg configurations for
+    different client types).
+    """
+    return await _client().get("/api/core/outputprofiles/")
+
+
+@mcp.tool()
+async def get_output_profile(profile_id: int) -> dict:
+    """Get a single output profile by ID."""
+    return await _client().get(f"/api/core/outputprofiles/{profile_id}/")
+
+
+@mcp.tool()
+async def create_output_profile(
+    name: str,
+    command: str,
+    parameters: str,
+    is_active: bool = True,
+) -> dict:
+    """Create a new output profile.
+
+    `command` is the executable (e.g. ``ffmpeg``).
+    `parameters` are the command-line arguments — must read from ``pipe:0``
+    (stdin) and write to ``pipe:1`` (stdout).
+    """
+    return await _client().post(
+        "/api/core/outputprofiles/",
+        data=_clean({
+            "name": name,
+            "command": command,
+            "parameters": parameters,
+            "is_active": is_active,
+        }),
+    )
+
+
+@mcp.tool()
+async def update_output_profile(profile_id: int, fields: dict) -> dict:
+    """Partially update an output profile by ID.
+
+    `fields` may contain any of: ``name``, ``command``, ``parameters``,
+    ``is_active``. Locked (built-in) profiles cannot be modified.
+    """
+    return await _client().patch(
+        f"/api/core/outputprofiles/{profile_id}/", data=fields
+    )
+
+
+@mcp.tool()
+async def delete_output_profile(profile_id: int) -> dict:
+    """Delete an output profile by ID.
+
+    Built-in locked profiles cannot be deleted.
+    """
+    return await _client().delete(f"/api/core/outputprofiles/{profile_id}/")
 
 
 # ---------------------------------------------------------------------------
