@@ -23,6 +23,7 @@ To generate an API key: Dispatcharr UI → **System → Users** → edit your us
 | **Streams** | `list_streams`, `get_stream`, `create_channel_from_stream`, `preview_regex_streams`, `create_stream`, `update_stream`, `delete_stream`, `bulk_delete_streams`, `list_stream_groups`, `list_stream_filter_options`, `list_stream_ids`, `get_streams_by_ids` |
 | **Proxy / Live** | `get_proxy_status`, `get_channel_proxy_status`, `change_channel_stream`, `next_channel_stream`, `stop_channel_stream`, `stop_channel_client` |
 | **EPG** | `list_epg_sources`, `get_epg_source`, `create_epg_source`, `upload_epg_source`, `update_epg_source`, `delete_epg_source`, `list_epg_data`, `list_epg_programs`, `search_epg_programs`, `get_current_programs`, `get_epg_grid` |
+| **Schedules Direct** | `get_sd_lineups`, `add_sd_lineup`, `remove_sd_lineup`, `search_sd_lineups` |
 | **M3U Accounts** | `list_m3u_accounts`, `get_m3u_account`, `create_m3u_account`, `update_m3u_account`, `delete_m3u_account`, `refresh_m3u_account`, `refresh_all_m3u_accounts`, `get_m3u_auto_channels_count`, `repack_m3u_group`, `refresh_m3u_vod`, `update_m3u_group_settings`, `list_m3u_filters`, `get_m3u_filter`, `create_m3u_filter`, `update_m3u_filter`, `delete_m3u_filter`, `list_m3u_account_profiles`, `get_m3u_account_profile`, `create_m3u_account_profile`, `update_m3u_account_profile`, `delete_m3u_account_profile` |
 | **M3U Server Groups** | `list_m3u_server_groups`, `get_m3u_server_group`, `create_m3u_server_group`, `update_m3u_server_group`, `delete_m3u_server_group` |
 | **Channel Profiles** | `list_channel_profiles`, `create_channel_profile`, `delete_channel_profile`, `get_channel_profile`, `update_channel_profile`, `duplicate_channel_profile`, `bulk_update_profile_channels`, `update_profile_channel` |
@@ -39,7 +40,7 @@ To generate an API key: Dispatcharr UI → **System → Users** → edit your us
 | **DVR Recordings** | `list_recordings`, `get_recording`, `schedule_recording`, `update_recording`, `delete_recording`, `stop_recording`, `extend_recording`, `update_recording_metadata`, `refresh_recording_artwork`, `run_comskip`, `bulk_delete_upcoming_recordings`, `get_comskip_config`, `update_comskip_config` |
 | **DVR Series Rules** | `list_series_rules`, `create_series_rule`, `delete_series_rule`, `evaluate_series_rules`, `preview_series_rule`, `bulk_remove_series_rules` |
 | **DVR Recurring Rules** | `list_recurring_rules`, `get_recurring_rule`, `create_recurring_rule`, `update_recurring_rule`, `delete_recurring_rule` |
-| **EPG (programs)** | `get_epg_program`, `create_epg_program`, `update_epg_program`, `delete_epg_program`, `import_epg`, `get_epg_data_entry` |
+| **EPG (programs)** | `get_epg_program`, `create_epg_program`, `update_epg_program`, `delete_epg_program`, `import_epg`, `get_epg_data_entry`, `get_epg_program_poster_url` |
 | **Backups** | `list_backups`, `create_backup`, `restore_backup`, `delete_backup`, `get_backup_schedule`, `update_backup_schedule`, `get_backup_status`, `get_backup_download_token` |
 | **Plugins** | `list_plugins`, `enable_plugin`, `run_plugin`, `configure_plugin`, `import_plugin`, `reload_plugins`, `delete_plugin`, `list_plugin_repos`, `create_plugin_repo`, `update_plugin_repo`, `delete_plugin_repo` |
 

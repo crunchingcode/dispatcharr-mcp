@@ -4,6 +4,23 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.2.0] - 2026-06-15
+
+Dispatcharr 0.26 added native Schedules Direct EPG integration; this version adds MCP tools for all new endpoints.
+
+### Added
+
+**Schedules Direct Lineup Management**
+- `get_sd_lineups` — list the lineups currently active on a Schedules Direct EPG source, including daily add allowance (`changes_remaining`) and lockout reset time
+- `add_sd_lineup` — add a lineup to a Schedules Direct EPG source by lineup ID (e.g. `"USA-NJ29486-X"`); response includes updated `changes_remaining`
+- `remove_sd_lineup` — remove a lineup from a Schedules Direct EPG source by lineup ID
+- `search_sd_lineups` — search available headend lineups by ISO country code and postal code; returns lineup IDs, names, transport types, and headend info
+
+**EPG Programs**
+- `get_epg_program_poster_url` — returns the Dispatcharr poster proxy URL for a Schedules Direct EPG program (publicly accessible, nginx-cached for 24 hours)
+
+---
+
 ## [2.1.0] - 2026-05-23
 
 Dispatcharr shipped new API endpoints in its latest release; this version adds MCP tools for all of them.

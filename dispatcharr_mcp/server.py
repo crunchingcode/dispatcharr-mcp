@@ -376,6 +376,88 @@ async def delete_epg_source(source_id: int) -> dict:
     return await _client().delete(f"/api/epg/sources/{source_id}/")
 
 
+# ---------------------------------------------------------------------------
+# Schedules Direct lineup management (EPG sources with source_type=schedules_direct)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def get_sd_lineups(source_id: int) -> dict:
+    """List the Schedules Direct lineups active on an EPG source.
+
+    `source_id` must be the ID of a Schedules Direct EPG source.
+
+    Returns the active lineups plus ``changes_remaining`` (SD limits 6
+    lineup additions per 24-hour period, resetting at midnight UTC) and
+    ``changes_reset_at`` (when the counter resets, if a lockout is in effect).
+    """
+    return await _client().get(f"/api/epg/sources/{source_id}/sd-lineups/")
+
+
+@mcp.tool()
+async def add_sd_lineup(source_id: int, lineup: str) -> dict:
+    """Add a Schedules Direct lineup to an EPG source.
+
+    `source_id` must be the ID of a Schedules Direct EPG source.
+    `lineup` is the SD lineup identifier, e.g. ``"USA-NJ29486-X"``.
+    Use `search_sd_lineups` to find available lineup IDs for a postal code.
+
+    SD allows a maximum of 4 active lineups and 6 lineup additions per
+    24-hour period.  The response includes ``changes_remaining`` so you can
+    track headroom before the daily limit is reached.
+    """
+    return await _client().post(
+        f"/api/epg/sources/{source_id}/sd-lineups/",
+        data={"lineup": lineup},
+    )
+
+
+@mcp.tool()
+async def remove_sd_lineup(source_id: int, lineup: str) -> dict:
+    """Remove a Schedules Direct lineup from an EPG source.
+
+    `source_id` must be the ID of a Schedules Direct EPG source.
+    `lineup` is the SD lineup identifier, e.g. ``"USA-NJ29486-X"``.
+    """
+    return await _client().delete_with_body(
+        f"/api/epg/sources/{source_id}/sd-lineups/",
+        data={"lineup": lineup},
+    )
+
+
+@mcp.tool()
+async def search_sd_lineups(source_id: int, country: str, postalcode: str) -> dict:
+    """Search available Schedules Direct lineups by country and postal code.
+
+    `source_id` must be the ID of a Schedules Direct EPG source — its
+    credentials are used to authenticate with Schedules Direct on your behalf.
+    `country` is the ISO 3166-1 alpha-3 country code, e.g. ``"USA"`` or ``"CAN"``.
+    `postalcode` is the ZIP or postal code, e.g. ``"07030"``.
+
+    Returns a flat list of available lineups, each with ``lineup`` (the ID to
+    pass to `add_sd_lineup`), ``name``, ``transport``, ``location``, and ``headend``.
+    """
+    return await _client().post(
+        f"/api/epg/sources/{source_id}/sd-lineups/search/",
+        data={"country": country, "postalcode": postalcode},
+    )
+
+
+@mcp.tool()
+async def get_epg_program_poster_url(program_id: int) -> dict:
+    """Get the poster image URL for a Schedules Direct EPG program.
+
+    Returns the URL of the Dispatcharr poster proxy endpoint for the given
+    program.  The proxy is publicly accessible (no auth required) and is
+    cached by nginx for 24 hours.
+
+    Only works for programs from Schedules Direct EPG sources that have
+    poster artwork stored; others return 404 from the proxy.
+    """
+    client = _client()
+    url = f"{client._base}/api/epg/programs/{program_id}/poster/"
+    return {"poster_url": url, "program_id": program_id}
+
+
 @mcp.tool()
 async def upload_epg_source(
     name: str,
