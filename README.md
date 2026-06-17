@@ -56,9 +56,49 @@ The following API endpoints are not yet implemented. Contributions welcome.
 
 - **Plugin extras** — `refresh_plugin_repo`, `install_plugin`, `list_available_plugins`, `get_repo_settings`, `update_repo_settings`, `preview_plugin`, `get_plugin_detail` (not present in current swagger spec)
 
+## Docker
+
+Pre-built images are published to the GitHub Container Registry for `linux/amd64` and `linux/arm64`:
+
+```bash
+docker pull ghcr.io/crunchingcode/dispatcharr-mcp:latest
+```
+
+### VS Code (`mcp.json`) — Docker
+
+```json
+{
+  "servers": {
+    "dispatcharr": {
+      "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-e", "DISPATCHARR_URL",
+        "-e", "DISPATCHARR_API_KEY",
+        "ghcr.io/crunchingcode/dispatcharr-mcp:latest"
+      ],
+      "env": {
+        "DISPATCHARR_URL": "http://your-dispatcharr-host:9191",
+        "DISPATCHARR_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+### CLI
+
+```bash
+docker run --rm -i \
+  -e DISPATCHARR_URL=http://your-dispatcharr-host:9191 \
+  -e DISPATCHARR_API_KEY=your-api-key \
+  ghcr.io/crunchingcode/dispatcharr-mcp:latest
+```
+
 ## Requirements
 
-- Python 3.10+
+- Python 3.10+ (or Docker)
 - A running Dispatcharr instance (v0.20+)
 - A Dispatcharr API key **or** a username + password
 

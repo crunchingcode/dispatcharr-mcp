@@ -80,7 +80,7 @@ jobs:
             ### Quick start (stdio transport)
             ```bash
             docker run --rm -i \
-              -e DISPATCHARR_URL=http://dispatcharr.example.com \
+              -e DISPATCHARR_URL=http://dispatcharr.example.com:9191 \
               -e DISPATCHARR_API_KEY=your-key \
               ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ```
