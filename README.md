@@ -64,6 +64,15 @@ Pre-built images are published to the GitHub Container Registry for `linux/amd64
 docker pull ghcr.io/crunchingcode/dispatcharr-mcp:latest
 ```
 
+### CLI
+
+```bash
+docker run --rm -i \
+  -e DISPATCHARR_URL=http://your-dispatcharr-host:9191 \
+  -e DISPATCHARR_API_KEY=your-api-key \
+  ghcr.io/crunchingcode/dispatcharr-mcp:latest
+```
+
 ### VS Code (`mcp.json`) — Docker
 
 ```json
@@ -85,15 +94,6 @@ docker pull ghcr.io/crunchingcode/dispatcharr-mcp:latest
     }
   }
 }
-```
-
-### CLI
-
-```bash
-docker run --rm -i \
-  -e DISPATCHARR_URL=http://your-dispatcharr-host:9191 \
-  -e DISPATCHARR_API_KEY=your-api-key \
-  ghcr.io/crunchingcode/dispatcharr-mcp:latest
 ```
 
 ## Requirements
