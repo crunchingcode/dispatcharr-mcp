@@ -4,6 +4,17 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.3.1] - 2026-06-18
+
+### Changed
+
+- Docker image now runs in **streamable-http** mode by default (port 8000), allowing clients to connect over HTTP rather than requiring stdio process spawning
+- `MCP_TRANSPORT` env var controls transport — defaults to `streamable-http` in Docker; set to `stdio` for local venv usage
+- Updated README Docker section to reflect persistent container usage and `mcp.json` HTTP configuration
+- Fixed GitHub username in README clone URL
+
+---
+
 ## [2.2.0] - 2026-06-15
 
 Dispatcharr 0.26 added native Schedules Direct EPG integration; this version adds MCP tools for all new endpoints.

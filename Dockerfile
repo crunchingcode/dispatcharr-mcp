@@ -13,10 +13,17 @@ RUN pip install --no-cache-dir .
 # DISPATCHARR_API_KEY   - preferred auth (generate in Dispatcharr UI)
 # DISPATCHARR_USERNAME  - JWT fallback
 # DISPATCHARR_PASSWORD  - JWT fallback
+#
+# MCP_TRANSPORT         - transport mode (default: streamable-http for Docker use)
+#                         set to stdio only if the client spawns the process directly
+# PORT                  - HTTP listen port (default: 8000)
 
 ENV DISPATCHARR_URL=""
 ENV DISPATCHARR_API_KEY=""
 ENV DISPATCHARR_USERNAME=""
 ENV DISPATCHARR_PASSWORD=""
+ENV MCP_TRANSPORT="streamable-http"
+
+EXPOSE 8000
 
 ENTRYPOINT ["dispatcharr-mcp"]

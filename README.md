@@ -64,33 +64,38 @@ Pre-built images are published to the GitHub Container Registry for `linux/amd64
 docker pull ghcr.io/crunchingcode/dispatcharr-mcp:latest
 ```
 
-### CLI
+The Docker image runs in **streamable-http** mode by default, exposing the MCP server on port 8000. This works whether the container is on the same machine as your IDE or a different machine on your network.
+
+### Start the container
 
 ```bash
-docker run --rm -i \
+docker run -d -p 8000:8000 \
   -e DISPATCHARR_URL=http://your-dispatcharr-host:9191 \
   -e DISPATCHARR_API_KEY=your-api-key \
   ghcr.io/crunchingcode/dispatcharr-mcp:latest
 ```
 
-### VS Code (`mcp.json`) — Docker
+### VS Code (`mcp.json`) — Docker (same machine)
 
 ```json
 {
   "servers": {
     "dispatcharr": {
-      "type": "stdio",
-      "command": "docker",
-      "args": [
-        "run", "--rm", "-i",
-        "-e", "DISPATCHARR_URL",
-        "-e", "DISPATCHARR_API_KEY",
-        "ghcr.io/crunchingcode/dispatcharr-mcp:latest"
-      ],
-      "env": {
-        "DISPATCHARR_URL": "http://your-dispatcharr-host:9191",
-        "DISPATCHARR_API_KEY": "your-api-key"
-      }
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
+    }
+  }
+}
+```
+
+### VS Code (`mcp.json`) — Docker (different machine on LAN)
+
+```json
+{
+  "servers": {
+    "dispatcharr": {
+      "type": "http",
+      "url": "http://192.168.1.x:8000/mcp"
     }
   }
 }
@@ -105,7 +110,7 @@ docker run --rm -i \
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/dispatcharr-mcp
+git clone https://github.com/crunchingcode/dispatcharr-mcp
 cd dispatcharr-mcp
 python3 -m venv .venv
 .venv/bin/pip install -e .

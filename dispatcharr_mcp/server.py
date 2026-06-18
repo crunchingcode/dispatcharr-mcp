@@ -15,7 +15,14 @@ Tools are grouped by domain:
   • Connect         — integrations, subscriptions, delivery logs
   • DVR             — recordings, series rules, recurring rules
   • Plugins         — installed plugins and plugin repositories
+
+Transport:
+  Set MCP_TRANSPORT=streamable-http (or sse) to run as an HTTP server — required
+  when deployed in Docker/Kubernetes so clients can reach it over the network.
+  Defaults to stdio for local development.
 """
+
+import os
 
 from mcp.server.fastmcp import FastMCP
 
@@ -2870,7 +2877,8 @@ async def get_backup_download_token(filename: str) -> dict:
 
 
 def main() -> None:
-    mcp.run()
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    mcp.run(transport=transport)
 
 
 if __name__ == "__main__":
