@@ -4,6 +4,14 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.3.4] - 2026-06-20
+
+### Fixed
+
+- `FastMCP` constructor ignores env vars — explicitly pass `host` and `port` from `FASTMCP_HOST` / `FASTMCP_PORT` / `PORT` env vars so the HTTP server binds correctly in Docker and Kubernetes
+
+---
+
 ## [2.3.3] - 2026-06-20
 
 ### Fixed
