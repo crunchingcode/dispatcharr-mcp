@@ -4,6 +4,14 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.3.3] - 2026-06-20
+
+### Fixed
+
+- Corrected env var from `MCP_HOST` to `FASTMCP_HOST` (FastMCP uses `FASTMCP_` prefix for all settings)
+
+---
+
 ## [2.3.2] - 2026-06-20
 
 ### Fixed

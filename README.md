@@ -72,7 +72,7 @@ The Docker image runs in **streamable-http** mode by default, exposing the MCP s
 docker run -d -p 8000:8000 \
   -e DISPATCHARR_URL=http://your-dispatcharr-host:9191 \
   -e DISPATCHARR_API_KEY=your-api-key \
-  -e MCP_HOST=0.0.0.0 \
+  -e FASTMCP_HOST=0.0.0.0 \
   ghcr.io/crunchingcode/dispatcharr-mcp:latest
 ```
 
