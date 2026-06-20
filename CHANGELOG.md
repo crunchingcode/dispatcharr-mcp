@@ -4,6 +4,15 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.3.2] - 2026-06-20
+
+### Fixed
+
+- Set `MCP_HOST=0.0.0.0` as default in Docker image so the HTTP server binds to all interfaces (not just loopback), enabling Kubernetes and remote container deployments to connect
+- Updated README Docker `run` example to include `MCP_HOST=0.0.0.0`
+
+---
+
 ## [2.3.1] - 2026-06-18
 
 ### Changed
