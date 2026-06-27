@@ -56,15 +56,35 @@ The following API endpoints are not yet implemented. Contributions welcome.
 
 - **Plugin extras** — `refresh_plugin_repo`, `install_plugin`, `list_available_plugins`, `get_repo_settings`, `update_repo_settings`, `preview_plugin`, `get_plugin_detail` (not present in current swagger spec)
 
+## Setup
+
+There are two ways to run dispatcharr-mcp. Choose the one that fits your setup:
+
+| Approach | Best for | Transport |
+|----------|----------|-----------|
+| **Docker** | Homelab / NAS / remote server — MCP server runs separately from your IDE | HTTP (`type: http`) |
+| **Local install** | MCP server runs as a subprocess on the same machine as your IDE | stdio (`type: stdio`) |
+
+### Where do these config snippets go?
+
+All the snippets below are MCP server configuration. Where you put them depends on your AI client:
+
+| Client | File location | Scope |
+|--------|--------------|-------|
+| **VS Code** — project | `.mcp.json` in your project root (alongside `.git/`) | This project only |
+| **VS Code** — user | `Ctrl+Shift+P` → *Open User Settings (JSON)* → `"mcp"` key | All projects |
+| **Claude Desktop** (Linux) | `~/.config/Claude/claude_desktop_config.json` | All conversations |
+| **Claude Desktop** (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` | All conversations |
+
+> **Tip:** Use a project-scoped `.mcp.json` when you want to commit the config with your project. Use user/global config when you want dispatcharr-mcp available everywhere.
+
+---
+
 ## Docker
 
-Pre-built images are published to the GitHub Container Registry for `linux/amd64` and `linux/arm64`:
+Pre-built images are published to the GitHub Container Registry for `linux/amd64` and `linux/arm64`.
 
-```bash
-docker pull ghcr.io/crunchingcode/dispatcharr-mcp:latest
-```
-
-The Docker image runs in **streamable-http** mode by default, exposing the MCP server on port 8000. This works whether the container is on the same machine as your IDE or a different machine on your network.
+The Docker image runs in **streamable-http** mode, exposing the MCP server on port 8000. Your AI client connects over HTTP — credentials stay in the container, not in your IDE config.
 
 ### Start the container
 
@@ -76,8 +96,11 @@ docker run -d -p 8000:8000 \
   ghcr.io/crunchingcode/dispatcharr-mcp:latest
 ```
 
-### VS Code (`mcp.json`) — Docker (same machine)
+### Connect your AI client (HTTP)
 
+Add one of these to your `.mcp.json` (project root) or your client's global config — see the table above for file locations.
+
+**Same machine as the container:**
 ```json
 {
   "servers": {
@@ -89,8 +112,7 @@ docker run -d -p 8000:8000 \
 }
 ```
 
-### VS Code (`mcp.json`) — Docker (different machine on LAN)
-
+**Container on a different machine on your LAN:**
 ```json
 {
   "servers": {
@@ -102,13 +124,19 @@ docker run -d -p 8000:8000 \
 }
 ```
 
-## Requirements
+---
 
-- Python 3.10+ (or Docker)
+## Local Installation
+
+Use this approach when you want the MCP server to run as a subprocess on the same machine as your IDE.
+
+### Requirements
+
+- Python 3.10+
 - A running Dispatcharr instance (v0.20+)
 - A Dispatcharr API key **or** a username + password
 
-## Installation
+### Install
 
 ```bash
 git clone https://github.com/crunchingcode/dispatcharr-mcp
@@ -117,10 +145,11 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
-## Usage
+### Connect your AI client (stdio)
 
-### VS Code (`mcp.json`) — API Key (recommended)
+Add one of these to your `.mcp.json` (project root), VS Code user settings, or Claude Desktop config — see the table above for file locations.
 
+**API Key (recommended):**
 ```json
 {
   "servers": {
@@ -137,8 +166,7 @@ python3 -m venv .venv
 }
 ```
 
-### VS Code (`mcp.json`) — Username/Password (JWT)
-
+**Username/Password (JWT):**
 ```json
 {
   "servers": {
