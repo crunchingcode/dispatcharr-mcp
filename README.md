@@ -21,7 +21,7 @@ To generate an API key: Dispatcharr UI → **System → Users** → edit your us
 | **Channels** | `list_channels`, `get_channel`, `create_channel`, `update_channel`, `delete_channel`, `get_channel_streams`, `get_channel_stream_stats`, `get_channels_in_number_range`, `bulk_delete_channels`, `bulk_update_channels`, `bulk_regex_update_channels`, `assign_channels`, `batch_set_epg`, `match_epg_all`, `set_logos_from_epg`, `set_names_from_epg`, `set_tvg_ids_from_epg`, `create_channels_from_streams_bulk`, `get_channels_by_uuids`, `reorder_channel`, `set_channel_epg`, `match_channel_epg` |
 | **Channel Groups** | `list_channel_groups`, `create_channel_group`, `update_channel_group`, `delete_channel_group` |
 | **Streams** | `list_streams`, `get_stream`, `create_channel_from_stream`, `preview_regex_streams`, `create_stream`, `update_stream`, `delete_stream`, `bulk_delete_streams`, `list_stream_groups`, `list_stream_filter_options`, `list_stream_ids`, `get_streams_by_ids` |
-| **Proxy / Live** | `get_proxy_status`, `get_channel_proxy_status`, `change_channel_stream`, `next_channel_stream`, `stop_channel_stream`, `stop_channel_client` |
+| **Proxy / Live** | `get_proxy_status`, `get_channel_proxy_status`, `change_channel_stream`, `next_channel_stream`, `stop_channel_stream`, `stop_channel_client`, `get_all_proxy_stats` |
 | **EPG** | `list_epg_sources`, `get_epg_source`, `create_epg_source`, `upload_epg_source`, `update_epg_source`, `delete_epg_source`, `list_epg_data`, `list_epg_programs`, `search_epg_programs`, `get_current_programs`, `get_epg_grid` |
 | **Schedules Direct** | `get_sd_lineups`, `add_sd_lineup`, `remove_sd_lineup`, `search_sd_lineups` |
 | **M3U Accounts** | `list_m3u_accounts`, `get_m3u_account`, `create_m3u_account`, `update_m3u_account`, `delete_m3u_account`, `refresh_m3u_account`, `refresh_all_m3u_accounts`, `get_m3u_auto_channels_count`, `repack_m3u_group`, `refresh_m3u_vod`, `update_m3u_group_settings`, `list_m3u_filters`, `get_m3u_filter`, `create_m3u_filter`, `update_m3u_filter`, `delete_m3u_filter`, `list_m3u_account_profiles`, `get_m3u_account_profile`, `create_m3u_account_profile`, `update_m3u_account_profile`, `delete_m3u_account_profile` |
@@ -36,7 +36,9 @@ To generate an API key: Dispatcharr UI → **System → Users** → edit your us
 | **VOD extras** | `list_all_vod`, `get_vod_item`, `get_vod_category`, `get_episode`, `get_series_episodes`, `get_movie_provider_info`, `get_series_provider_info` |
 | **VOD Logos** | `list_vod_logos`, `get_vod_logo`, `create_vod_logo`, `update_vod_logo`, `delete_vod_logo`, `bulk_delete_vod_logos`, `cleanup_vod_logos` |
 | **HDHomeRun** | `list_hdhr_devices`, `get_hdhr_device`, `create_hdhr_device`, `update_hdhr_device`, `delete_hdhr_device` |
-| **Proxy extras** | `change_hls_stream`, `get_vod_proxy_stats`, `stop_vod_client` |
+| **Proxy / Live** | `get_proxy_status`, `get_channel_proxy_status`, `change_channel_stream`, `next_channel_stream`, `stop_channel_stream`, `stop_channel_client`, `get_all_proxy_stats` |
+| **Catchup** | `create_catchup_session`, `delete_catchup_session`, `update_catchup_session_position`, `get_catchup_stats`, `stop_catchup_client` |
+| **Proxy extras** | `get_vod_proxy_stats`, `stop_vod_client` |
 | **DVR Recordings** | `list_recordings`, `get_recording`, `schedule_recording`, `update_recording`, `delete_recording`, `stop_recording`, `extend_recording`, `update_recording_metadata`, `refresh_recording_artwork`, `run_comskip`, `bulk_delete_upcoming_recordings`, `get_comskip_config`, `update_comskip_config` |
 | **DVR Series Rules** | `list_series_rules`, `create_series_rule`, `delete_series_rule`, `evaluate_series_rules`, `preview_series_rule`, `bulk_remove_series_rules` |
 | **DVR Recurring Rules** | `list_recurring_rules`, `get_recurring_rule`, `create_recurring_rule`, `update_recurring_rule`, `delete_recurring_rule` |

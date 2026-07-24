@@ -5,7 +5,8 @@ Tools are grouped by domain:
   • Channels        — list, get, create, update, delete channels & groups
   • Channel Logos   — logo entries for channels (create/update/delete/cleanup)
   • Streams         — list/get raw M3U streams by source
-  • Proxy           — live stream status and control (change, stop, failover)
+  • Proxy           — live stream status and control (change, stop, failover, combined stats)
+  • Catchup         — catch-up/timeshift session management and stats
   • EPG             — EPG sources and programme data
   • M3U Accounts    — manage M3U provider accounts, filters, profiles, server-groups
   • VOD             — movies, series, episodes, unified list, provider metadata
@@ -1304,19 +1305,18 @@ async def cleanup_channel_logos() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# PROXY EXTRAS — HLS and VOD proxy control
+# PROXY EXTRAS — VOD proxy control and combined stats
 # ---------------------------------------------------------------------------
 
 
 @mcp.tool()
-async def change_hls_stream(channel_id: str) -> dict:
-    """Force an HLS channel to switch to its next available stream source.
+async def get_all_proxy_stats() -> dict:
+    """Get combined live, VOD, and catch-up stats in a single response.
 
-    Use this when an HLS stream is failing or buffering — Dispatcharr will
-    immediately try the next source in the failover list.
-    `channel_id` is the channel's string identifier used by the proxy.
+    Returns a unified view of all active proxy sessions — live TS streams,
+    VOD sessions, and catch-up sessions — in one call.
     """
-    return await _client().post(f"/proxy/hls/change_stream/{channel_id}")
+    return await _client().get("/proxy/stats/")
 
 
 @mcp.tool()
@@ -1336,6 +1336,89 @@ async def stop_vod_client() -> dict:
     Sends a stop signal to terminate an active VOD client session.
     """
     return await _client().post("/proxy/vod/stop_client/", data={})
+
+
+# ---------------------------------------------------------------------------
+# CATCHUP — catch-up/timeshift session management
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def create_catchup_session(
+    channel_uuid: str,
+    start: str,
+    duration: int | None = None,
+) -> dict:
+    """Create a catch-up playback session for a single archived programme.
+
+    Returns a ``playback_url`` the video player should open within 60 seconds.
+    After the first byte is received the session stays valid with a 10-minute
+    sliding idle window.
+
+    `channel_uuid` — Dispatcharr channel UUID.
+    `start`        — Programme broadcast start time in UTC (ISO-8601, e.g.
+                     ``"2026-07-09T14:00:00Z"``). Selects *which* archived
+                     show to fetch.
+    `duration`     — Optional programme length in minutes (1-480). Omit to
+                     derive from EPG.
+    """
+    return await _client().post(
+        "/api/catchup/sessions/",
+        data=_clean({"channel_uuid": channel_uuid, "start": start, "duration": duration}),
+    )
+
+
+@mcp.tool()
+async def delete_catchup_session(session_id: str) -> dict:
+    """Delete a catch-up session before it expires.
+
+    Only the user who created the session may revoke it.
+    Returns 404 when the session is missing or owned by another user.
+    """
+    return await _client().delete(f"/api/catchup/sessions/{session_id}/")
+
+
+@mcp.tool()
+async def update_catchup_session_position(
+    session_id: str,
+    position_secs: float,
+    paused: bool | None = None,
+) -> dict:
+    """Update the playhead position for an active catch-up session.
+
+    Use this to keep admin stats aligned with what the viewer sees. This does
+    **not** seek the provider stream — HTTP Range requests still control bytes.
+    Also refreshes the session idle TTL.
+
+    `session_id`    — Session ID returned by `create_catchup_session`.
+    `position_secs` — Current playhead in seconds from programme start (0-28800).
+    `paused`        — ``True`` to freeze the admin stats clock; ``False`` to
+                      resume. Omit to leave pause state unchanged.
+    """
+    return await _client().post(
+        f"/api/catchup/sessions/{session_id}/position/",
+        data=_clean({"position_secs": position_secs, "paused": paused}),
+    )
+
+
+@mcp.tool()
+async def get_catchup_stats() -> dict:
+    """Get live statistics for all active catch-up viewer sessions.
+
+    Returns session details for every catch-up stream currently in progress,
+    suitable for display on the stats page.
+    """
+    return await _client().get("/proxy/catchup/stats/")
+
+
+@mcp.tool()
+async def stop_catchup_client() -> dict:
+    """Stop a catch-up viewer session.
+
+    Sends a stop signal to terminate an active catch-up client session
+    (one session corresponds to one stats channel entry).
+    """
+    return await _client().post("/proxy/catchup/stop_client/", data={})
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,25 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.4.0] - 2026-07-24
+
+Adds full catch-up/timeshift support matching Dispatcharr 0.28.x.
+
+### Added
+
+- `create_catchup_session` — create a catch-up playback session for an archived programme; returns a `playback_url` valid for 60 seconds with a 10-minute sliding idle window
+- `delete_catchup_session` — revoke a catch-up session before it expires
+- `update_catchup_session_position` — report playhead position and pause state to keep admin stats accurate
+- `get_catchup_stats` — list all active catch-up viewer sessions (stats page data)
+- `stop_catchup_client` — terminate an active catch-up client session
+- `get_all_proxy_stats` — single call returning combined live, VOD, and catch-up stats (`/proxy/stats/`)
+
+### Removed
+
+- `change_hls_stream` — the `/proxy/hls/change_stream/` endpoint was removed in Dispatcharr 0.28. Use `change_channel_stream` (TS proxy) instead.
+
+---
+
 ## [2.3.4] - 2026-06-20
 
 ### Fixed
