@@ -4,6 +4,26 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.5.0] - 2026-08-10
+
+Tracks Dispatcharr 0.29.0.
+
+### Fixed
+
+- `delete_series_rule` — the `DELETE /api/channels/series-rules/{tvg_id}/` route no longer exists; the rule is now deleted via query parameters on the collection (`DELETE /api/channels/series-rules/?tvg_id=...`). The old path did not fail cleanly: Dispatcharr's SPA catch-all answered it with `200 text/html`, so `raise_for_status()` passed and the tool then died parsing HTML as JSON.
+
+### Added
+
+- `delete_series_rule` gains an optional `title` argument, to delete one rule when several exist on the same channel. `create_series_rule` has always accepted `title`, but the old path-based delete had no way to target those rules.
+- `list_movies` gains an optional `is_adult` filter — `False` excludes adult titles, `True` lists only those, omitted returns everything. New query parameter in 0.29.0.
+- `DispatcharrClient.delete()` accepts `params`, so query-parameter deletes are expressible.
+
+### Changed
+
+- `swagger_new.yaml` refreshed from Dispatcharr 0.29.0 (`/api/schema/`); previous baseline rotated to `swagger_old.yaml`.
+
+---
+
 ## [2.4.0] - 2026-07-24
 
 Adds full catch-up/timeshift support matching Dispatcharr 0.28.x.

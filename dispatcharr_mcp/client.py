@@ -120,8 +120,8 @@ class DispatcharrClient:
     async def put(self, path: str, data: dict | None = None) -> Any:
         return await self._request("PUT", path, json=data or {})
 
-    async def delete(self, path: str) -> dict:
-        return await self._request("DELETE", path)
+    async def delete(self, path: str, params: dict | None = None) -> dict:
+        return await self._request("DELETE", path, params=params)
 
     async def delete_with_body(self, path: str, data: dict) -> dict:
         return await self._request("DELETE", path, json=data)

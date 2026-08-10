@@ -204,7 +204,12 @@ paths:
           description: ''
     patch:
       operationId: api_accounts_groups_partial_update
-      description: Handles CRUD operations for Groups
+      description: |-
+        CRUD for Django auth groups and their permissions.
+
+        Dispatcharr authorization uses ``user_level``, not these groups. The
+        endpoint is kept for compatibility but restricted to admins so
+        non-admins cannot invent auth groups or attach Django permissions.
       parameters:
       - in: path
         name: id
@@ -685,6 +690,148 @@ paths:
       responses:
         '200':
           description: No response body
+  /api/catchup/sessions/:
+    post:
+      operationId: api_catchup_sessions_create
+      description: |-
+        Create a catch-up playback session for a single archived programme.
+
+        Call this once per programme with a JWT or API key. The response includes a ``playback_url`` for the video player **without** an embedded access token.
+
+        **``start``** is the programme's broadcast start time in UTC (from EPG ``start_time``). It selects *which* archived show to fetch, not when the viewer pressed play.
+
+        **``duration``** is optional programme length in minutes. Native clients should send it when their guide knows the programme length. Dispatcharr uses it before local EPG duration, adds a short provider-lag buffer, and falls back to EPG duration, then the default archive window when omitted.
+
+        The player should open ``playback_url`` within **60 seconds** (see ``expires_at``). After the first byte request, the session stays valid with a **10-minute sliding idle window** (refreshed on each range/seek request).
+
+        Start a **new** session for each different programme.
+      tags:
+      - catchup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatchupSessionCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CatchupSessionCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CatchupSessionCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatchupSessionResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatchupSessionCreateError'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatchupSessionForbidden'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatchupSessionNotFound'
+          description: ''
+  /api/catchup/sessions/{session_id}/:
+    delete:
+      operationId: api_catchup_sessions_destroy
+      description: Delete a catch-up session before it expires. Only the user who
+        created the session may revoke it. Returns 404 when the session is missing
+        or owned by another user.
+      parameters:
+      - in: path
+        name: session_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - catchup
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatchupSessionDestroyForbidden'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatchupSessionDestroyNotFound'
+          description: ''
+  /api/catchup/sessions/{session_id}/position/:
+    post:
+      operationId: api_catchup_sessions_position_create
+      description: |-
+        Update the reported playhead for an active catch-up session.
+
+        Native apps can call this while paused or after local scrubbing so admin stats stay aligned with what the viewer sees. This does **not** seek the provider stream; HTTP ``Range`` / a new archive open still control bytes.
+
+        Requires an active playback connection for ``session_id``. Also refreshes the session idle TTL.
+      parameters:
+      - in: path
+        name: session_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - catchup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatchupSessionPosition'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CatchupSessionPosition'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CatchupSessionPosition'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatchupSessionPositionError'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatchupSessionPositionForbidden'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatchupSessionPositionNotFound'
+          description: ''
   /api/channels/channels/:
     get:
       operationId: api_channels_channels_list
@@ -915,6 +1062,13 @@ paths:
           description: ''
     delete:
       operationId: api_channels_channels_destroy
+      description: |-
+        Delete a channel. Optionally stop an active proxy session first.
+
+        Query param ``stop_stream`` (default false): when true, stop the live
+        proxy session *before* the DB delete (outside the delete atomic) so
+        playback ends with the channel row. When false, an in-progress stream
+        keeps playing until stopped from Stats or the client disconnects.
       parameters:
       - in: path
         name: id
@@ -1100,7 +1254,8 @@ paths:
   /api/channels/channels/bulk-delete/:
     delete:
       operationId: api_channels_channels_bulk_delete_destroy
-      description: Bulk delete channels by ID
+      description: Bulk delete channels by ID. Optional ``stop_stream`` (default false)
+        stops active proxy sessions for those channels before deleting.
       tags:
       - api
       security:
@@ -8280,16 +8435,123 @@ paths:
       responses:
         '200':
           description: No response body
-  /proxy/hls/change_stream/{channel_id}:
-    post:
-      operationId: proxy_hls_change_stream_create
-      description: Change stream URL for existing channel
+  /proxy/catchup/{channel_id}:
+    get:
+      operationId: proxy_catchup_retrieve
+      description: |-
+        Stream catch-up (TV archive) MPEG-TS for a channel.
+
+        **Recommended (native apps):** call ``POST /api/catchup/sessions/`` with a JWT or API key to obtain a ``playback_url`` containing ``session_id`` only. Pass that URL to the video player without an ``?token=`` required. The session binds the programme ``start`` time server-side.
+
+        **Legacy / direct auth:** supply ``start`` (programme UTC start time) plus ``Authorization: Bearer``, ``X-API-Key``, or ``?token=<jwt>``. Optionally include a client ``session_id`` for provider pooling.
+
+        **``session_id`` without a matching pool:** the server responds with **301** and a minted ``session_id`` (direct-auth / first play only).
+
+        **``session_id`` omitted but pool match:** when the same viewer reconnects (e.g. IPTV fast-forward) and fingerprint-matches an existing pool entry, the stream is served on that request with no redirect round trip.
+
+        **Plain GET (no ``Range``):** upstream archive is streamed from byte 0 with ``Content-Length`` when the provider reports file size (provider-faithful behaviour for XC-style IPTV clients).
       parameters:
       - in: path
         name: channel_id
         schema:
           type: string
+          format: uuid
         required: true
+      - in: query
+        name: session_id
+        schema:
+          type: string
+        description: Playback session from ``POST /api/catchup/sessions/`` or a prior
+          **301** redirect. When present, JWT is optional. Reuse for all range/seek
+          requests during the same programme. May be omitted on reconnect when the
+          server adopts a fingerprint-matched pool entry.
+      - in: query
+        name: start
+        schema:
+          type: string
+        description: Programme start time in UTC. Required for direct-auth playback
+          (no API session). Ignored when ``session_id`` was issued by ``POST /api/catchup/sessions/``.
+      - in: query
+        name: token
+        schema:
+          type: string
+        description: JWT access token when Authorization headers are unavailable.
+          Not needed when using an API playback session.
+      tags:
+      - proxy
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: MPEG-TS stream. Partial content (``206``) when the client
+                  sent ``Range``. Full-file ``200`` on plain GET includes ``Content-Length``
+                  when the upstream archive size is known.
+          description: ''
+        '301':
+          content:
+            application/json:
+              schema:
+                description: Redirect to the same URL with a server-minted ``session_id``
+                  when the client did not supply one and no fingerprint-matched pool
+                  entry exists (first play / direct-auth only).
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                description: Missing or expired authentication / session.
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                description: Access denied or session/channel mismatch.
+          description: ''
+  /proxy/catchup/programs/:
+    post:
+      operationId: proxy_catchup_programs_create
+      description: Return EPG metadata for active catch-up sessions (batch).
+      tags:
+      - proxy
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /proxy/catchup/stats/:
+    get:
+      operationId: proxy_catchup_stats_retrieve
+      description: Return active catch-up viewer sessions for the stats page.
+      tags:
+      - proxy
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /proxy/catchup/stop_client/:
+    post:
+      operationId: proxy_catchup_stop_client_create
+      description: Stop a catch-up viewer by session id (one session = one stats channel).
+      tags:
+      - proxy
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /proxy/stats/:
+    get:
+      operationId: proxy_stats_retrieve
+      description: Return live, VOD, and catch-up stats in one response.
       tags:
       - proxy
       security:
@@ -8728,6 +8990,125 @@ components:
             * `channel` - channel
       required:
       - tvg_id
+    CatchupSessionCreate:
+      type: object
+      properties:
+        channel_uuid:
+          type: string
+          format: uuid
+          description: Dispatcharr channel UUID to play catch-up from.
+        start:
+          type: string
+          description: UTC programme start time (which archived show to play). ISO-8601
+            (2026-07-09T14:00:00Z), Unix epoch, or XC wall-clock shapes.
+        duration:
+          type: integer
+          maximum: 480
+          minimum: 1
+          description: Optional programme length in minutes. Preferred over EPG when
+            supplied. A short buffer is added for provider archive lag. Omit to derive
+            the length from EPG.
+      required:
+      - channel_uuid
+      - start
+    CatchupSessionCreateError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    CatchupSessionDestroyForbidden:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    CatchupSessionDestroyNotFound:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    CatchupSessionForbidden:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    CatchupSessionNotFound:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    CatchupSessionPosition:
+      type: object
+      properties:
+        position_secs:
+          type: number
+          format: double
+          maximum: 28800
+          minimum: 0
+          description: Current playhead within the programme, in seconds from programme
+            start.
+        paused:
+          type: boolean
+          description: When true, admin stats freeze at ``position_secs`` (no wall-clock
+            advance). When false, clear pause. Omit to leave pause state unchanged.
+      required:
+      - position_secs
+    CatchupSessionPositionError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    CatchupSessionPositionForbidden:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    CatchupSessionPositionNotFound:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    CatchupSessionResponse:
+      type: object
+      properties:
+        session_id:
+          type: string
+        playback_url:
+          type: string
+        expires_at:
+          type: integer
+          description: 'Unix timestamp. Handshake deadline: first playback GET within
+            this window.'
+        channel_uuid:
+          type: string
+          format: uuid
+        start:
+          type: string
+        duration:
+          type: integer
+          nullable: true
+          description: Programme length in minutes if supplied at creation, else null.
+      required:
+      - channel_uuid
+      - expires_at
+      - playback_url
+      - session_id
+      - start
     CategoryTypeEnum:
       enum:
       - movie
@@ -8793,6 +9174,14 @@ components:
         is_adult:
           type: boolean
           description: Whether this channel contains adult content
+        is_catchup:
+          type: boolean
+          description: Whether any stream on this channel supports catch-up (tv_archive=1)
+        catchup_days:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          description: Max catch-up archive days across all streams on this channel
         hidden_from_output:
           type: boolean
           description: Exclude this channel from downstream client output (HDHR, M3U,
@@ -9671,6 +10060,7 @@ components:
           maxLength: 255
         password:
           type: string
+          writeOnly: true
           nullable: true
           maxLength: 255
         stale_stream_days:
@@ -10200,6 +10590,14 @@ components:
         is_adult:
           type: boolean
           description: Whether this channel contains adult content
+        is_catchup:
+          type: boolean
+          description: Whether any stream on this channel supports catch-up (tv_archive=1)
+        catchup_days:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          description: Max catch-up archive days across all streams on this channel
         hidden_from_output:
           type: boolean
           description: Exclude this channel from downstream client output (HDHR, M3U,
@@ -10534,6 +10932,7 @@ components:
           maxLength: 255
         password:
           type: string
+          writeOnly: true
           nullable: true
           maxLength: 255
         stale_stream_days:
@@ -10848,6 +11247,14 @@ components:
           nullable: true
           description: Provider channel number (XC num or M3U tvg-chno) for ordering
             - supports decimals like 2.1
+        is_catchup:
+          type: boolean
+          description: Whether this stream supports catch-up/timeshift (tv_archive=1)
+        catchup_days:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          description: Number of days of catch-up archive available (tv_archive_duration)
     PatchedStreamProfile:
       type: object
       properties:
@@ -11778,6 +12185,14 @@ components:
           nullable: true
           description: Provider channel number (XC num or M3U tvg-chno) for ordering
             - supports decimals like 2.1
+        is_catchup:
+          type: boolean
+          description: Whether this stream supports catch-up/timeshift (tv_archive=1)
+        catchup_days:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          description: Number of days of catch-up archive available (tv_archive_duration)
       required:
       - id
       - updated_at

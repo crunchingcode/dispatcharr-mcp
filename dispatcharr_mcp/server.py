@@ -688,12 +688,15 @@ async def list_movies(
     category: str | None = None,
     year: int | None = None,
     m3u_account: int | None = None,
+    is_adult: bool | None = None,
     page: int | None = None,
     page_size: int | None = None,
 ) -> dict:
     """List VOD movies with optional filtering.
 
     Filter by title `search`, `category`, release `year`, or `m3u_account` ID.
+    `is_adult` filters on the adult-content flag — pass ``False`` to exclude
+    adult titles, ``True`` to list only those, or omit it for everything.
     """
     return await _client().get(
         "/api/vod/movies/",
@@ -703,6 +706,7 @@ async def list_movies(
                 "category": category,
                 "year": year,
                 "m3u_account": m3u_account,
+                "is_adult": is_adult,
                 "page": page,
                 "page_size": page_size,
             }
@@ -985,13 +989,19 @@ async def create_series_rule(
 
 
 @mcp.tool()
-async def delete_series_rule(tvg_id: str) -> dict:
+async def delete_series_rule(tvg_id: str, title: str | None = None) -> dict:
     """Delete a DVR series rule by TVG-ID.
+
+    `title` narrows the delete to a single rule when several rules exist on
+    the same channel — omit it to delete the channel-wide rule.
 
     Future scheduled recordings for the rule are also removed; already
     completed recordings are kept.
     """
-    return await _client().delete(f"/api/channels/series-rules/{tvg_id}/")
+    return await _client().delete(
+        "/api/channels/series-rules/",
+        params=_clean({"tvg_id": tvg_id, "title": title}),
+    )
 
 
 @mcp.tool()
