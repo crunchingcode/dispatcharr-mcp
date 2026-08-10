@@ -4,6 +4,16 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.5.1] - 2026-08-10
+
+### Fixed
+
+- **Image build was broken by an unpinned dependency.** `mcp[cli]>=1.0.0` had no upper bound, and `mcp` 2.0.0 (released 2026-07-28) deleted the `mcp.server.fastmcp` package — FastMCP became `MCPServer` under `mcp.server.mcpserver`, with a different API. Any image built after that date died on startup with `ModuleNotFoundError: No module named 'mcp.server.fastmcp'`. The 2.5.0 image was simply the first rebuild since, so it surfaced a landmine that had been armed for two weeks. Now pinned to `mcp[cli]>=1.0.0,<2`.
+
+Porting to the 2.x `MCPServer` API remains outstanding; the pin is what makes that a scheduled job rather than an outage.
+
+---
+
 ## [2.5.0] - 2026-08-10
 
 Tracks Dispatcharr 0.29.0.
