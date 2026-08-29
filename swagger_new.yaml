@@ -2016,9 +2016,32 @@ paths:
       responses:
         '204':
           description: No response body
-  /api/channels/logos/{id}/cache/:
+  /api/channels/logos/{id}/cache:
     get:
       operationId: api_channels_logos_cache_retrieve
+      description: Streams the logo file, whether it's local or remote.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Logo'
+          description: ''
+  /api/channels/logos/{id}/cache/:
+    get:
+      operationId: api_channels_logos_cache_retrieve_2
       description: Streams the logo file, whether it's local or remote.
       parameters:
       - in: path
@@ -2986,9 +3009,17 @@ paths:
     delete:
       operationId: api_channels_series_rules_destroy
       description: Remove a series recording rule by tvg_id + title and clean up future
-        scheduled recordings.
+        scheduled recordings. Pass epg_source_id to delete only that source copy when
+        the same title exists on more than one source.
       summary: Delete a series rule
       parameters:
+      - in: query
+        name: epg_source_id
+        schema:
+          type: integer
+        description: Optional EPG source. When set, only the rule for that source
+          is removed, and only recordings tagged with that source (plus untagged legacy
+          snapshots) are cleaned up.
       - in: query
         name: title
         schema:
@@ -5183,9 +5214,32 @@ paths:
       responses:
         '204':
           description: No response body
-  /api/epg/programs/{id}/poster/:
+  /api/epg/programs/{id}/poster:
     get:
       operationId: api_epg_programs_poster_retrieve
+      description: Proxy endpoint for SD program poster images. Nginx caches the response.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgramData'
+          description: ''
+  /api/epg/programs/{id}/poster/:
+    get:
+      operationId: api_epg_programs_poster_retrieve_2
       description: Proxy endpoint for SD program poster images. Nginx caches the response.
       parameters:
       - in: path
@@ -7451,9 +7505,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/Episode'
           description: ''
-  /api/vod/episodes/{id}/image/:
+  /api/vod/episodes/{id}/image:
     get:
       operationId: api_vod_episodes_image_retrieve
+      description: Proxy a stored episode image (movie_image, backdrop, poster_path).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Episode'
+          description: ''
+  /api/vod/episodes/{id}/image/:
+    get:
+      operationId: api_vod_episodes_image_retrieve_2
       description: Proxy a stored episode image (movie_image, backdrop, poster_path).
       parameters:
       - in: path
@@ -7567,9 +7644,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/Movie'
           description: ''
-  /api/vod/movies/{id}/image/:
+  /api/vod/movies/{id}/image:
     get:
       operationId: api_vod_movies_image_retrieve
+      description: Proxy a stored movie image (backdrop, movie_image, poster_path).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+          description: ''
+  /api/vod/movies/{id}/image/:
+    get:
+      operationId: api_vod_movies_image_retrieve_2
       description: Proxy a stored movie image (backdrop, movie_image, poster_path).
       parameters:
       - in: path
@@ -7749,9 +7849,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/Series'
           description: ''
-  /api/vod/series/{id}/image/:
+  /api/vod/series/{id}/image:
     get:
       operationId: api_vod_series_image_retrieve
+      description: Proxy a stored series image (backdrop, movie_image, poster_path).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Series'
+          description: ''
+  /api/vod/series/{id}/image/:
+    get:
+      operationId: api_vod_series_image_retrieve_2
       description: Proxy a stored series image (backdrop, movie_image, poster_path).
       parameters:
       - in: path
@@ -7995,9 +8118,32 @@ paths:
       responses:
         '204':
           description: No response body
-  /api/vod/vodlogos/{id}/cache/:
+  /api/vod/vodlogos/{id}/cache:
     get:
       operationId: api_vod_vodlogos_cache_retrieve
+      description: Streams the VOD logo file, whether it's local or remote.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VODLogo'
+          description: ''
+  /api/vod/vodlogos/{id}/cache/:
+    get:
+      operationId: api_vod_vodlogos_cache_retrieve_2
       description: Streams the VOD logo file, whether it's local or remote.
       parameters:
       - in: path
@@ -9081,6 +9227,10 @@ components:
 
             * `title` - title
             * `channel` - channel
+        epg_source_id:
+          type: integer
+          description: Optional EPG source. When set, only recordings tagged with
+            that source (and untagged legacy snapshots) are removed.
       required:
       - tvg_id
     CatchupSessionCreate:
@@ -9522,6 +9672,10 @@ components:
         channels:
           type: string
           readOnly: true
+        start_empty:
+          type: boolean
+          writeOnly: true
+          default: false
       required:
       - channels
       - id
@@ -10058,7 +10212,6 @@ components:
           readOnly: true
         name:
           type: string
-          maxLength: 255
         url:
           type: string
         cache_url:
@@ -10781,6 +10934,10 @@ components:
         channels:
           type: string
           readOnly: true
+        start_empty:
+          type: boolean
+          writeOnly: true
+          default: false
     PatchedCoreSettings:
       type: object
       properties:
@@ -10941,7 +11098,6 @@ components:
           readOnly: true
         name:
           type: string
-          maxLength: 255
         url:
           type: string
         cache_url:
@@ -11522,7 +11678,6 @@ components:
           readOnly: true
         name:
           type: string
-          maxLength: 255
         url:
           type: string
         cache_url:
@@ -12077,6 +12232,11 @@ components:
           allOf:
           - $ref: '#/components/schemas/ModeEnum'
           default: all
+        untagged_is_new:
+          type: boolean
+          default: false
+          description: 'mode ''new'' only: treat a program tagged neither new nor
+            previously-shown as new, for EPG feeds that only tag repeats'
         title:
           type: string
         title_mode:
@@ -12089,6 +12249,9 @@ components:
           allOf:
           - $ref: '#/components/schemas/DescriptionModeEnum'
           default: contains
+        epg_source_id:
+          type: integer
+          description: Optional EPG source, combined with tvg_id
         limit:
           type: integer
           description: Max programs to return (default 25, max 100)
@@ -12107,6 +12270,11 @@ components:
 
             * `all` - all
             * `new` - new
+        untagged_is_new:
+          type: boolean
+          default: false
+          description: 'mode ''new'' only: treat a program tagged neither new nor
+            previously-shown as new, for EPG feeds that only tag repeats'
         title:
           type: string
           description: Series title
@@ -12138,6 +12306,11 @@ components:
           type: integer
           description: Optional channel to pin recordings to (defaults to lowest-numbered
             channel for the EPG)
+        epg_source_id:
+          type: integer
+          description: Optional EPG source. Combined with tvg_id this picks a specific
+            EPG row when the same tvg_id exists on more than one source. Omit on legacy
+            rules to use every mapped copy of that tvg_id.
     ServerGroup:
       type: object
       description: Serializer for Server Group
@@ -12621,7 +12794,6 @@ components:
           readOnly: true
         name:
           type: string
-          maxLength: 255
         url:
           type: string
         cache_url:

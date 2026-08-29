@@ -23,6 +23,10 @@ Dispatcharr 0.30.0 added three optional fields to existing request bodies. None 
 
 Pass the same `epg_source_id` and `untagged_is_new` to `preview_series_rule` that you intend to save, or the preview will not reflect what the rule does.
 
+### Changed
+
+- `swagger_new.yaml` refreshed from Dispatcharr 0.30.0 (`/api/schema/`); previous baseline rotated to `swagger_old.yaml`. Note the spec lives at `/api/schema/` — `/api/swagger/` serves the Swagger UI page and 404s for YAML.
+
 ---
 
 ## [2.5.1] - 2026-08-10

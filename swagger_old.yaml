@@ -7379,7 +7379,7 @@ paths:
       - in: query
         name: m3u_account
         schema:
-          type: number
+          type: integer
       - in: query
         name: name
         schema:
@@ -7451,6 +7451,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/Episode'
           description: ''
+  /api/vod/episodes/{id}/image/:
+    get:
+      operationId: api_vod_episodes_image_retrieve
+      description: Proxy a stored episode image (movie_image, backdrop, poster_path).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Episode.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Episode'
+          description: ''
   /api/vod/movies/:
     get:
       operationId: api_vod_movies_list
@@ -7460,6 +7484,10 @@ paths:
         name: category
         schema:
           type: string
+      - in: query
+        name: is_adult
+        schema:
+          type: boolean
       - in: query
         name: m3u_account
         schema:
@@ -7532,6 +7560,30 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+          description: ''
+  /api/vod/movies/{id}/image/:
+    get:
+      operationId: api_vod_movies_image_retrieve
+      description: Proxy a stored movie image (backdrop, movie_image, poster_path).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Movie.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - {}
       responses:
         '200':
           content:
@@ -7690,6 +7742,30 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Series'
+          description: ''
+  /api/vod/series/{id}/image/:
+    get:
+      operationId: api_vod_series_image_retrieve
+      description: Proxy a stored series image (backdrop, movie_image, poster_path).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Series.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - {}
       responses:
         '200':
           content:
@@ -8445,7 +8521,7 @@ paths:
 
         **Legacy / direct auth:** supply ``start`` (programme UTC start time) plus ``Authorization: Bearer``, ``X-API-Key``, or ``?token=<jwt>``. Optionally include a client ``session_id`` for provider pooling.
 
-        **``session_id`` without a matching pool:** the server responds with **301** and a minted ``session_id`` (direct-auth / first play only).
+        **No ``session_id`` and no pool match:** with the default stream profile set to Redirect, the server responds with **302** to a capacity-checked provider timeshift URL (PATH layout for this native endpoint). Otherwise **301** with a minted ``session_id`` (direct-auth / first play only).
 
         **``session_id`` omitted but pool match:** when the same viewer reconnects (e.g. IPTV fast-forward) and fingerprint-matches an existing pool entry, the stream is served on that request with no redirect round trip.
 
@@ -8497,8 +8573,18 @@ paths:
             application/json:
               schema:
                 description: Redirect to the same URL with a server-minted ``session_id``
-                  when the client did not supply one and no fingerprint-matched pool
-                  entry exists (first play / direct-auth only).
+                  when the client did not supply one, no fingerprint-matched pool
+                  entry exists, and Redirect is not the default stream profile (first
+                  play / direct-auth only).
+          description: ''
+        '302':
+          content:
+            application/json:
+              schema:
+                description: Redirect to a provider timeshift URL when Redirect is
+                  the default stream profile, the client did not supply a ``session_id``,
+                  and no fingerprint-matched pool entry exists. No Dispatcharr session
+                  is minted.
           description: ''
         '401':
           content:
@@ -8511,6 +8597,13 @@ paths:
             application/json:
               schema:
                 description: Access denied or session/channel mismatch.
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                description: No capacity or provider URL available (including Redirect
+                  handoff when every catch-up profile is at capacity).
           description: ''
   /proxy/catchup/programs/:
     post:
@@ -9566,10 +9659,13 @@ components:
           type: string
           maxLength: 512
         icon_url:
-          type: string
-          format: uri
           nullable: true
-          maxLength: 500
+          oneOf:
+          - type: string
+            format: uri
+            maxLength: 500
+          - type: string
+            maxLength: 0
         epg_source:
           type: integer
           nullable: true
@@ -10291,6 +10387,9 @@ components:
           nullable: true
           description: IMDB ID for metadata
           maxLength: 50
+        is_adult:
+          type: boolean
+          description: Whether this movie contains adult content
         custom_properties:
           nullable: true
           description: Additional metadata and properties for the movie
@@ -11271,8 +11370,8 @@ components:
           maxLength: 255
         parameters:
           type: string
-          description: Command-line parameters. Use {userAgent} and {streamUrl} as
-            placeholders.
+          description: Command-line parameters. Use {userAgent}, {streamUrl}, and
+            {channelId} as placeholders.
         is_active:
           type: boolean
           description: Whether this profile is active
@@ -11338,10 +11437,13 @@ components:
           readOnly: true
           nullable: true
         email:
-          type: string
-          format: email
           title: Email address
-          maxLength: 254
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
         user_level:
           type: integer
           maximum: 2147483647
@@ -12222,8 +12324,8 @@ components:
           maxLength: 255
         parameters:
           type: string
-          description: Command-line parameters. Use {userAgent} and {streamUrl} as
-            placeholders.
+          description: Command-line parameters. Use {userAgent}, {streamUrl}, and
+            {channelId} as placeholders.
         is_active:
           type: boolean
           description: Whether this profile is active
@@ -12393,10 +12495,13 @@ components:
           readOnly: true
           nullable: true
         email:
-          type: string
-          format: email
           title: Email address
-          maxLength: 254
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
         user_level:
           type: integer
           maximum: 2147483647
