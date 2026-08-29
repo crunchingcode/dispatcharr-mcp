@@ -1,3 +1,6 @@
 .venv/
 __pycache__/
-swagger.yaml
+# API spec snapshots — kept locally for upgrade diffs, never committed.
+# Fetch with: curl http://<dispatcharr>/api/schema/ -o swagger_new.yaml
+*swagger*.yaml
+*swagger*.yml
