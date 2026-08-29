@@ -973,6 +973,8 @@ async def create_series_rule(
     tvg_id: str,
     mode: str = "all",
     title: str | None = None,
+    epg_source_id: int | None = None,
+    untagged_is_new: bool | None = None,
 ) -> dict:
     """Create (or update) a DVR series recording rule.
 
@@ -980,27 +982,55 @@ async def create_series_rule(
     `mode` is either ``"all"`` (record every episode) or ``"new"``
     (only episodes not yet recorded).
     `title` narrows the rule to a specific series title on that channel.
+
+    `epg_source_id` pins the rule to one EPG source. Set it whenever the same
+    `tvg_id` is carried by more than one source, or the channel uses an
+    override EPG — without it the rule can resolve against the wrong copy of
+    the guide and silently schedule nothing.
+
+    `untagged_is_new` applies to ``mode="new"`` only. By default a programme
+    must carry an EPG ``<new/>`` tag to count as new; enable this for guides
+    that only mark repeats, so programmes tagged neither ``<new/>`` nor
+    ``<previously-shown/>`` are also recorded. Programmes explicitly tagged
+    ``<previously-shown/>`` stay excluded either way.
+
     Rules are evaluated immediately after creation.
     """
     return await _client().post(
         "/api/channels/series-rules/",
-        data=_clean({"tvg_id": tvg_id, "mode": mode, "title": title}),
+        data=_clean({
+            "tvg_id": tvg_id,
+            "mode": mode,
+            "title": title,
+            "epg_source_id": epg_source_id,
+            "untagged_is_new": untagged_is_new,
+        }),
     )
 
 
 @mcp.tool()
-async def delete_series_rule(tvg_id: str, title: str | None = None) -> dict:
+async def delete_series_rule(
+    tvg_id: str,
+    title: str | None = None,
+    epg_source_id: int | None = None,
+) -> dict:
     """Delete a DVR series rule by TVG-ID.
 
     `title` narrows the delete to a single rule when several rules exist on
     the same channel — omit it to delete the channel-wide rule.
+    `epg_source_id` narrows it further to the rule pinned to that EPG source,
+    which is what disambiguates a `tvg_id` carried by several sources.
 
     Future scheduled recordings for the rule are also removed; already
     completed recordings are kept.
     """
     return await _client().delete(
         "/api/channels/series-rules/",
-        params=_clean({"tvg_id": tvg_id, "title": title}),
+        params=_clean({
+            "tvg_id": tvg_id,
+            "title": title,
+            "epg_source_id": epg_source_id,
+        }),
     )
 
 
@@ -1026,6 +1056,8 @@ async def preview_series_rule(
     description_mode: str = "contains",
     mode: str = "all",
     limit: int | None = None,
+    epg_source_id: int | None = None,
+    untagged_is_new: bool | None = None,
 ) -> dict:
     """Preview which EPG programmes a series rule would match before saving it.
 
@@ -1033,6 +1065,10 @@ async def preview_series_rule(
     channels. `title_mode` is one of ``exact``, ``contains``, or ``regex``.
     `description_mode` is one of ``contains`` or ``regex``.
     `mode` is ``all`` or ``new``. `limit` caps results (default 25, max 100).
+
+    `epg_source_id` and `untagged_is_new` mean the same thing here as in
+    ``create_series_rule``. Pass the same values you intend to save, or the
+    preview will not reflect what the rule actually does.
     """
     return await _client().post(
         "/api/channels/series-rules/preview/",
@@ -1044,6 +1080,8 @@ async def preview_series_rule(
             "description_mode": description_mode,
             "mode": mode,
             "limit": limit,
+            "epg_source_id": epg_source_id,
+            "untagged_is_new": untagged_is_new,
         }),
     )
 
@@ -1167,13 +1205,20 @@ async def delete_m3u_filter(account_id: int, filter_id: int) -> dict:
 
 
 @mcp.tool()
-async def create_channel_profile(name: str) -> dict:
+async def create_channel_profile(name: str, start_empty: bool = False) -> dict:
     """Create a new channel profile.
 
     Channel profiles define different output sets for different client
     types (e.g. a 4K profile, a mobile profile, etc.).
+
+    By default the new profile is backfilled with every existing channel.
+    Set `start_empty` to create it with no members instead, then add channels
+    deliberately.
     """
-    return await _client().post("/api/channels/profiles/", data={"name": name})
+    return await _client().post(
+        "/api/channels/profiles/",
+        data={"name": name, "start_empty": start_empty},
+    )
 
 
 @mcp.tool()
@@ -1443,15 +1488,33 @@ async def get_recurring_rule(rule_id: int) -> dict:
 
 
 @mcp.tool()
-async def bulk_remove_series_rules(tvg_ids: list[str]) -> dict:
-    """Delete future scheduled recordings for one or more series rules.
+async def bulk_remove_series_rules(
+    tvg_id: str,
+    title: str | None = None,
+    scope: str = "title",
+    epg_source_id: int | None = None,
+) -> dict:
+    """Delete future scheduled recordings for a series rule.
 
-    `tvg_ids` is a list of TVG-ID strings whose queued (not yet started)
-    recordings should be removed.  Useful for cancelling a rule's upcoming
-    recordings without fully deleting the rule itself.
+    Cancels a rule's upcoming recordings without deleting the rule itself.
+    Queued (not yet started) recordings are removed; completed ones are kept.
+
+    `tvg_id` is the single channel TVG-ID to act on — the endpoint takes one
+    channel per call, so loop to cover several.
+    `scope` is ``"title"`` (default — remove only recordings matching `title`
+    on that channel) or ``"channel"`` (remove every future recording on it).
+    `title` is required in practice when `scope="title"`.
+    `epg_source_id` limits removal to recordings tagged with that EPG source,
+    plus untagged legacy snapshots.
     """
     return await _client().post(
-        "/api/channels/series-rules/bulk-remove/", data={"tvg_ids": tvg_ids}
+        "/api/channels/series-rules/bulk-remove/",
+        data=_clean({
+            "tvg_id": tvg_id,
+            "title": title,
+            "scope": scope,
+            "epg_source_id": epg_source_id,
+        }),
     )
 
 

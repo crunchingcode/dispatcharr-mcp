@@ -4,6 +4,27 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.6.0] - 2026-08-29
+
+Tracks Dispatcharr 0.30.0.
+
+### Fixed
+
+- **`bulk_remove_series_rules` never worked.** It posted `{"tvg_ids": [...]}` — a plural list — to an endpoint whose serializer takes a single required `tvg_id` string plus optional `title` and `scope`. Every call returned `400 {"error": "tvg_id or title is required"}`. The schema is identical in every spec copy back to May, so this was wrong from the day the tool was written rather than a break introduced by an upgrade; nothing in 0.30.0 caused it. The signature is now `(tvg_id, title=None, scope="title", epg_source_id=None)`, matching `BulkRemoveSeriesRecordingsRequest`. Callers removing recordings for several channels loop instead of passing a list — the endpoint handles one channel per call.
+
+### Added
+
+Dispatcharr 0.30.0 added three optional fields to existing request bodies. None are required and all are additive, so existing calls keep working unchanged.
+
+- `create_series_rule` and `preview_series_rule` gain `epg_source_id`, which pins a rule to one EPG source. Worth setting whenever a `tvg_id` is carried by more than one source or the channel uses an override EPG: unpinned rules can resolve against the wrong copy of the guide and silently schedule nothing (Dispatcharr #1529). Rules created through the web UI pin a source automatically; rules created through this MCP did not, so they stayed exposed to that bug until now.
+- `create_series_rule` and `preview_series_rule` gain `untagged_is_new` for `mode="new"`. By default a programme needs an EPG `<new/>` tag to count as new; this also accepts programmes tagged neither `<new/>` nor `<previously-shown/>`, for guides that only mark repeats. Explicit `<previously-shown/>` stays excluded either way.
+- `delete_series_rule` and `bulk_remove_series_rules` gain `epg_source_id`, to disambiguate a `tvg_id` that several sources carry.
+- `create_channel_profile` gains `start_empty`. The default still backfills every existing channel; set it to create an empty profile and add channels deliberately.
+
+Pass the same `epg_source_id` and `untagged_is_new` to `preview_series_rule` that you intend to save, or the preview will not reflect what the rule does.
+
+---
+
 ## [2.5.1] - 2026-08-10
 
 ### Fixed
