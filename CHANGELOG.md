@@ -4,6 +4,28 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **`bulk_delete_channel_logos` and `bulk_delete_vod_logos` never worked.** Both passed a body to `DispatcharrClient.delete()`, which takes no body, so every call raised `TypeError` before reaching the server. They also sent `ids` where both endpoints read `logo_ids`. Now sent via `delete_with_body` with `logo_ids`. The channel variant gains `delete_files`, which the endpoint has always accepted, to remove local `/data/logos` files as well.
+- **`create_subscription` never worked.** It posted `event_type`, but the serializer's fields are `event` and a required `integration`. The signature is now `(event, integration_id, enabled=True, payload_template=None)` and the docstring lists every valid event name. The old signature could not create a subscription, so nothing that worked is broken by the change.
+- `dispatcharr_mcp.__version__` was left at 2.5.1; it now matches the package version.
+
+### Changed
+
+- **Errors now carry Dispatcharr's explanation.** Failed requests still raise `httpx.HTTPStatusError`, but the message now includes method, path and the response body (capped at 500 characters), e.g. `401 Unauthorized for GET /api/…: {"detail":"Invalid API key"}` instead of a bare status line. Login failures in JWT mode report the same way.
+- **`get_epg_grid` output is filtered and capped.** The raw grid returned every programme on every channel. On a 151-channel install the default 24-hour window was about 1.1 MB, far more than a model can use in one tool result. The tool now:
+  - filters by `tvg_ids` and by `search` (title or sub-title)
+  - leaves out `description` unless `include_description` is set
+  - drops null, false and empty keys from each programme
+  - sorts by `start_time` and caps the result at `limit` (default 150)
+
+  The same default call is now about 36 KB. The response is now `{"data": [...], "total", "truncated"}` instead of the raw `{"data": [...]}`, so callers can tell when to narrow the query. `channel_profile_id` also accepts `"all"`.
+- Docstrings note Dispatcharr 0.31 behaviour: `m3u_error` / `epg_error` system events, `update_user`'s `allowed_m3u_profile_ids`, recording path confinement in `update_recording`, the new grouped-setting keys in `update_setting`, `log_collector_running` in `get_env_settings`, `rehash_streams` being admin-only, and `delete_output_profile`'s side effects.
+
+---
+
 ## [2.7.0] - 2026-09-27
 
 Tracks Dispatcharr 0.31.0.
