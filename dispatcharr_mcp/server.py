@@ -25,6 +25,7 @@ Transport:
 """
 
 import functools
+import json
 import os
 
 import httpx
@@ -34,31 +35,42 @@ from mcp.server.mcpserver.exceptions import ToolError
 from dispatcharr_mcp.client import DispatcharrClient
 
 
-def _surface_errors(fn):
-    """Re-raise anticipated failures as ToolError so their text reaches the model.
+def _adapt(fn):
+    """Wrap a tool to fix two MCPServer defaults that don't suit this API.
 
-    MCPServer masks every other exception as a bare "Error executing tool X",
-    which would hide Dispatcharr's 4xx/5xx response bodies (the model needs them
-    to correct its call) and the missing-env-var messages from the client.
-    Anything else is a bug: it stays masked and is logged with its traceback.
+    Errors: MCPServer masks any exception other than ToolError as a bare
+    "Error executing tool X", which would hide Dispatcharr's 4xx/5xx response
+    bodies (the model needs them to correct its call) and the missing-env-var
+    messages from the client. Those are re-raised as ToolError. Anything else
+    is a bug: it stays masked and is logged with its traceback.
+
+    Lists: MCPServer sends a returned list as one content block per item, so a
+    1,500-row array arrived as 1,500 blocks. Lists go out as one compact JSON
+    string instead. Many endpoints return bare arrays, including some under
+    `-> dict` tools, so this checks the runtime value, not the annotation.
+    Keep return annotations bare (`-> list`, not `-> list[X]`): a parametrised
+    one makes the SDK derive an output schema, which a JSON string would fail.
     """
 
     @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
         try:
-            return await fn(*args, **kwargs)
+            result = await fn(*args, **kwargs)
         except (httpx.HTTPError, ValueError) as exc:
             raise ToolError(str(exc)) from exc
+        if isinstance(result, list):
+            return json.dumps(result, separators=(",", ":"), ensure_ascii=False)
+        return result
 
     return wrapper
 
 
 class _Server(MCPServer):
-    """MCPServer whose `@mcp.tool()` also applies `_surface_errors`."""
+    """MCPServer whose `@mcp.tool()` also applies `_adapt`."""
 
     def tool(self, *args, **kwargs):
         register = super().tool(*args, **kwargs)
-        return lambda fn: register(_surface_errors(fn))
+        return lambda fn: register(_adapt(fn))
 
 
 mcp = _Server("Dispatcharr")
@@ -203,10 +215,59 @@ async def get_channels_in_number_range(
 # ---------------------------------------------------------------------------
 
 
+# Every M3U provider category becomes a group, so installs reach thousands;
+# 1,506 groups was ~480 KB raw. Trimmed, one group is ~125 bytes of output.
+_GROUP_LIMIT = 200
+
+
 @mcp.tool()
-async def list_channel_groups() -> list:
-    """List all channel groups."""
-    return await _client().get("/api/channels/groups/")
+async def list_channel_groups(
+    search: str | None = None,
+    has_channels: bool = False,
+    m3u_account_id: int | None = None,
+    include_m3u_accounts: bool = False,
+    limit: int = _GROUP_LIMIT,
+) -> dict:
+    """List channel groups, filtered and trimmed.
+
+    Most groups come from M3U provider categories and hold no channels. To
+    see only the groups your channels actually use, pass `has_channels=true`.
+
+    The API returns every group unfiltered, so filtering happens here:
+
+    - `search` keeps groups whose name contains the text (case-insensitive).
+    - `has_channels` keeps groups with at least one channel.
+    - `m3u_account_id` keeps groups linked to that M3U account.
+    - Each group's ``m3u_accounts`` list (per-account sync settings, custom
+      properties, last-seen times) is left out unless `include_m3u_accounts`
+      is true; ``m3u_account_count`` and ``channel_count`` are always kept.
+    - Matches are sorted by name and capped at `limit` (default 200). The
+      result is ``{"data": [...], "total": <matches>, "truncated": <bool>}``;
+      when truncated, filter rather than raising `limit` a long way.
+    """
+    groups = await _client().get("/api/channels/groups/")
+    if search:
+        needle = search.casefold()
+        groups = [g for g in groups if needle in (g.get("name") or "").casefold()]
+    if has_channels:
+        # The serializer sends the counts as strings.
+        groups = [g for g in groups if int(g.get("channel_count") or 0) > 0]
+    if m3u_account_id is not None:
+        # Inside each link, `m3u_accounts` is the single account's ID.
+        groups = [
+            g for g in groups
+            if any(a.get("m3u_accounts") == m3u_account_id for a in g.get("m3u_accounts") or [])
+        ]
+    groups.sort(key=lambda g: (g.get("name") or "").casefold())
+    limit = max(1, limit)
+    return {
+        "data": [
+            g if include_m3u_accounts else {k: v for k, v in g.items() if k != "m3u_accounts"}
+            for g in groups[:limit]
+        ],
+        "total": len(groups),
+        "truncated": len(groups) > limit,
+    }
 
 
 @mcp.tool()
