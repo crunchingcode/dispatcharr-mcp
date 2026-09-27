@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir .
 # MCP_TRANSPORT         - transport mode (default: streamable-http for Docker use)
 #                         set to stdio only if the client spawns the process directly
 # PORT                  - HTTP listen port (default: 8000)
+# DISPATCHARR_REVEAL_CREDENTIALS - set to "true" to turn off credential masking in tool results
 
 ENV DISPATCHARR_URL=""
 ENV DISPATCHARR_API_KEY=""

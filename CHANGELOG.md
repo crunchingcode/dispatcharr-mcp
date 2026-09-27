@@ -6,6 +6,19 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ## [Unreleased]
 
+### Security
+
+- **Credentials are masked in tool results.** Several results passed provider credentials to the model in plain text: EPG source URLs, M3U account URLs, Xtream Codes stream URLs, users' `api_key`, integration tokens, and the stream URLs Dispatcharr writes to its logs. Each secret is now replaced with `<redacted>`:
+  - inside URLs, anywhere in a result or error message: `user:pass@`, credential query parameters (`username`, `password`, `token`, `api_key`, …), and XC paths (`/live/<user>/<pass>/…`, plus the bare `host/<user>/<pass>/<id>` form)
+  - under credential-named keys at any depth (`password`, `token`, `secret`, `api_key`, `authorization`, …). Values that are unset or `false` are left as-is, so the model can still see whether a credential is configured. A setting's `value` is masked when its `key` names a credential (e.g. `smtp_password`).
+  - API keys keep their last four characters (`<redacted>a1b2`), so they can be told apart
+
+  `generate_api_key`, `get_backup_download_token` and `create_catchup_session` are not masked, because returning a credential is what they're for. A tool call whose arguments contain `<redacted>` is refused, so a masked URL read back into an update can't overwrite the real credential. `revoke_api_key` now needs the full key from the user.
+
+### Added
+
+- `DISPATCHARR_REVEAL_CREDENTIALS=true` turns masking off. It's an environment variable, not a tool parameter, so text the model reads (EPG titles, stream names) can't talk it into revealing credentials.
+
 ### Fixed
 
 - **`bulk_delete_channel_logos` and `bulk_delete_vod_logos` never worked.** Both passed a body to `DispatcharrClient.delete()`, which takes no body, so every call raised `TypeError` before reaching the server. They also sent `ids` where both endpoints read `logo_ids`. Now sent via `delete_with_body` with `logo_ids`. The channel variant gains `delete_files`, which the endpoint has always accepted, to remove local `/data/logos` files as well.

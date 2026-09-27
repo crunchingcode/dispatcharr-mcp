@@ -33,16 +33,32 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from dispatcharr_mcp.client import DispatcharrClient
+from dispatcharr_mcp.redact import PLACEHOLDER, contains_placeholder, redact, redact_text
+
+# Set only by the operator, never by the model: text the model reads (EPG
+# titles, stream names) could otherwise talk it into revealing credentials.
+_REVEAL_CREDENTIALS = os.environ.get("DISPATCHARR_REVEAL_CREDENTIALS", "").lower() in ("1", "true", "yes")
+
+# Tools whose purpose is to return a credential, so their results are not masked.
+_RETURNS_CREDENTIAL = {"generate_api_key", "get_backup_download_token", "create_catchup_session"}
+
+# Keys holding API keys that `redact` can't recognise by name alone.
+_API_KEY_FIELDS = {"list_api_keys": frozenset({"key"})}
 
 
 def _adapt(fn):
-    """Wrap a tool to fix two MCPServer defaults that don't suit this API.
+    """Wrap a tool to fix MCPServer defaults that don't suit this API.
 
     Errors: MCPServer masks any exception other than ToolError as a bare
     "Error executing tool X", which would hide Dispatcharr's 4xx/5xx response
     bodies (the model needs them to correct its call) and the missing-env-var
     messages from the client. Those are re-raised as ToolError. Anything else
     is a bug: it stays masked and is logged with its traceback.
+
+    Credentials: results and error text are masked (see `redact`) unless the
+    operator sets DISPATCHARR_REVEAL_CREDENTIALS. Arguments containing the
+    placeholder are refused, so a masked URL read back into an update can't
+    overwrite the real credential.
 
     Lists: MCPServer sends a returned list as one content block per item, so a
     1,500-row array arrived as 1,500 blocks. Lists go out as one compact JSON
@@ -51,13 +67,24 @@ def _adapt(fn):
     Keep return annotations bare (`-> list`, not `-> list[X]`): a parametrised
     one makes the SDK derive an output schema, which a JSON string would fail.
     """
+    mask = not _REVEAL_CREDENTIALS
+    mask_result = mask and fn.__name__ not in _RETURNS_CREDENTIAL
+    api_keys = _API_KEY_FIELDS.get(fn.__name__, frozenset())
 
     @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
+        if mask and contains_placeholder(kwargs):
+            raise ToolError(
+                f"An argument contains {PLACEHOLDER}, a credential masked in an "
+                "earlier result. Pass the real value, or leave the field out to "
+                "keep the stored one."
+            )
         try:
             result = await fn(*args, **kwargs)
         except (httpx.HTTPError, ValueError) as exc:
-            raise ToolError(str(exc)) from exc
+            raise ToolError(redact_text(str(exc)) if mask else str(exc)) from exc
+        if mask_result:
+            result = redact(result, api_keys)
         if isinstance(result, list):
             return json.dumps(result, separators=(",", ":"), ensure_ascii=False)
         return result
@@ -2196,7 +2223,10 @@ async def list_permissions() -> list:
 
 @mcp.tool()
 async def list_api_keys() -> list:
-    """List all API keys for the current user."""
+    """List all API keys for the current user.
+
+    Keys are masked to their last four characters (``<redacted>a1b2``).
+    """
     return await _client().get("/api/accounts/api-keys/")
 
 
@@ -2210,7 +2240,8 @@ async def generate_api_key() -> dict:
 async def revoke_api_key(key: str) -> dict:
     """Revoke an API key.
 
-    `key` is the API key string to revoke.
+    `key` is the full API key string to revoke. `list_api_keys` shows keys
+    masked, so the full key has to come from the user.
     """
     return await _client().post("/api/accounts/api-keys/revoke/", data={"key": key})
 

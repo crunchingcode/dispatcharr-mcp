@@ -209,6 +209,17 @@ export DISPATCHARR_API_KEY=your-api-key   # or use USERNAME + PASSWORD below
 | `DISPATCHARR_API_KEY` | ✅ (or user+pass) | Static API key — preferred auth method |
 | `DISPATCHARR_USERNAME` | ✅ (or api key) | Dispatcharr username (JWT fallback) |
 | `DISPATCHARR_PASSWORD` | ✅ (or api key) | Dispatcharr password (JWT fallback) |
+| `DISPATCHARR_REVEAL_CREDENTIALS` | | Set to `true` to turn off credential masking (see below) |
+
+### Credential masking
+
+Tool results never show provider credentials or API keys by default. Instead, `<redacted>` takes their place in:
+
+- URLs: `user:pass@`, `?username=…&password=…`, and Xtream Codes paths such as `/live/<user>/<pass>/123.ts`, anywhere in a result, including log files and error messages
+- values under keys such as `password`, `token`, `secret` and `authorization`
+- API keys, which keep their last four characters (`<redacted>a1b2`) so you can tell them apart
+
+`generate_api_key`, `get_backup_download_token` and `create_catchup_session` exist to return a credential, so their results are not masked. A tool call whose arguments contain `<redacted>` is refused, so a masked URL can't be written back over the real one. Only the operator can turn masking off; the model can't.
 
 ## License
 
