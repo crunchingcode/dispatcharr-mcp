@@ -24,17 +24,44 @@ Transport:
   Defaults to stdio for local development.
 """
 
+import functools
 import os
 
-from mcp.server.fastmcp import FastMCP
+import httpx
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from dispatcharr_mcp.client import DispatcharrClient
 
-mcp = FastMCP(
-    "Dispatcharr",
-    host=os.environ.get("FASTMCP_HOST", "127.0.0.1"),
-    port=int(os.environ.get("FASTMCP_PORT", os.environ.get("PORT", "8000"))),
-)
+
+def _surface_errors(fn):
+    """Re-raise anticipated failures as ToolError so their text reaches the model.
+
+    MCPServer masks every other exception as a bare "Error executing tool X",
+    which would hide Dispatcharr's 4xx/5xx response bodies (the model needs them
+    to correct its call) and the missing-env-var messages from the client.
+    Anything else is a bug: it stays masked and is logged with its traceback.
+    """
+
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await fn(*args, **kwargs)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ToolError(str(exc)) from exc
+
+    return wrapper
+
+
+class _Server(MCPServer):
+    """MCPServer whose `@mcp.tool()` also applies `_surface_errors`."""
+
+    def tool(self, *args, **kwargs):
+        register = super().tool(*args, **kwargs)
+        return lambda fn: register(_surface_errors(fn))
+
+
+mcp = _Server("Dispatcharr")
 
 
 _shared_client: DispatcharrClient | None = None
@@ -3299,7 +3326,15 @@ async def get_backup_download_token(filename: str) -> dict:
 
 def main() -> None:
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
-    mcp.run(transport=transport)
+    if transport == "stdio":
+        mcp.run(transport)
+    else:
+        # FASTMCP_* are the 1.x names; kept so existing deployments keep working.
+        mcp.run(
+            transport,
+            host=os.environ.get("FASTMCP_HOST", "127.0.0.1"),
+            port=int(os.environ.get("FASTMCP_PORT", os.environ.get("PORT", "8000"))),
+        )
 
 
 if __name__ == "__main__":

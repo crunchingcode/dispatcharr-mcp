@@ -14,6 +14,8 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ### Changed
 
+- **Requires `mcp>=2.2,<3`** (was `<2`). 2.0 removed `mcp.server.fastmcp`; the server now uses its successor, `MCPServer`. All 247 tools keep identical names, descriptions and input schemas. `MCP_TRANSPORT`, `FASTMCP_HOST`, `FASTMCP_PORT` and `PORT` work as before.
+- **Error text still reaches the model under 2.x.** 2.x replaces any exception other than `ToolError` with a bare `Error executing tool <name>`, which would hide the Dispatcharr response bodies described below. HTTP errors (4xx/5xx bodies, connection failures) and configuration errors such as a missing `DISPATCHARR_URL` are re-raised as `ToolError`, so their text is kept. Anything else is a bug: the client gets the generic message and the server logs the traceback.
 - **Errors now carry Dispatcharr's explanation.** Failed requests still raise `httpx.HTTPStatusError`, but the message now includes method, path and the response body (capped at 500 characters), e.g. `401 Unauthorized for GET /api/…: {"detail":"Invalid API key"}` instead of a bare status line. Login failures in JWT mode report the same way.
 - **`get_epg_grid` output is filtered and capped.** The raw grid returned every programme on every channel. On a 151-channel install the default 24-hour window was about 1.1 MB, far more than a model can use in one tool result. The tool now:
   - filters by `tvg_ids` and by `search` (title or sub-title)
