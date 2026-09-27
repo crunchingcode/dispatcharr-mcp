@@ -13,6 +13,8 @@ Two modes are supported — `DISPATCHARR_API_KEY` takes priority if set:
 
 To generate an API key: Dispatcharr UI → **System → Users** → edit your user → copy the API Key field.
 
+The key is sent as `Authorization: ApiKey <key>`. Dispatcharr also accepts `X-API-Key: <key>`, but **not** `Api-Key` — that scheme is silently ignored, so it appears to work against public endpoints such as `/api/core/version/` while every protected one returns 401. If calls fail with 401 in API key mode, the key itself is wrong or has been regenerated; update `DISPATCHARR_API_KEY` rather than the header.
+
 ## Tools
 
 | Domain | Tools |
@@ -28,7 +30,7 @@ To generate an API key: Dispatcharr UI → **System → Users** → edit your us
 | **M3U Server Groups** | `list_m3u_server_groups`, `get_m3u_server_group`, `create_m3u_server_group`, `update_m3u_server_group`, `delete_m3u_server_group` |
 | **Channel Profiles** | `list_channel_profiles`, `create_channel_profile`, `delete_channel_profile`, `get_channel_profile`, `update_channel_profile`, `duplicate_channel_profile`, `bulk_update_profile_channels`, `update_profile_channel` |
 | **VOD** | `list_movies`, `get_movie`, `list_series`, `get_series`, `list_episodes`, `list_vod_categories` |
-| **System** | `get_core_settings`, `get_version`, `list_stream_profiles`, `get_stream_profile`, `create_stream_profile`, `update_stream_profile`, `delete_stream_profile`, `get_system_events`, `list_timezones`, `list_useragents`, `get_useragent`, `create_useragent`, `update_useragent`, `delete_useragent`, `get_setting`, `update_setting`, `delete_setting`, `check_settings`, `get_env_settings`, `rehash_streams` |
+| **System** | `get_core_settings`, `get_version`, `list_stream_profiles`, `get_stream_profile`, `create_stream_profile`, `update_stream_profile`, `delete_stream_profile`, `get_system_events`, `list_timezones`, `list_useragents`, `get_useragent`, `create_useragent`, `update_useragent`, `delete_useragent`, `get_setting`, `update_setting`, `delete_setting`, `check_settings`, `get_env_settings`, `rehash_streams`, `list_log_files`, `get_log_file` |
 | **Output Profiles** | `list_output_profiles`, `get_output_profile`, `create_output_profile`, `update_output_profile`, `delete_output_profile` |
 | **Notifications** | `list_notifications`, `get_notification`, `get_notification_count`, `dismiss_notification`, `dismiss_all_notifications`, `delete_notification` |
 | **Connect** | `list_integrations`, `get_integration`, `create_integration`, `update_integration`, `delete_integration`, `test_integration`, `get_integration_subscriptions`, `set_integration_subscriptions`, `list_subscriptions`, `get_subscription`, `create_subscription`, `update_subscription`, `delete_subscription`, `list_stream_delivery_logs`, `get_delivery_log` |

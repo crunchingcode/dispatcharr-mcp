@@ -4,6 +4,30 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.7.0] - 2026-09-27
+
+Tracks Dispatcharr 0.31.0.
+
+### Fixed
+
+- **Username/password mode logged in on every tool call and hit Dispatcharr's login throttle.** `_client()` built a new `DispatcharrClient` per call, so the JWT it fetched was discarded as soon as the call returned — despite the docstring claiming the opposite. Every call did a full password login, and Dispatcharr limits `/api/accounts/token/` to 3 per minute per IP, so the fourth call inside a minute got `429`. The client is now created once and shared for the life of the process. Re-authentication is serialised behind a lock, so a burst of parallel calls shares one login, and when a token expires they share one refresh instead of each racing to re-authenticate. API key mode never logs in and was not affected.
+
+### Added
+
+- `list_log_files` and `get_log_file` for Dispatcharr's persisted logs (System → Logs, new in 0.31.0). `get_log_file` returns a `cursor`; pass it back to receive only lines written since, which makes it usable for following a log while reproducing a problem. Dispatcharr serves up to 24 MB per read, so `content` is trimmed to the last `max_chars` characters (default 20,000) on a line boundary, with `trimmed` in the response saying whether that happened. The download endpoint (`/api/core/logs/{name}/download/`) is not exposed: it serves the same file uncapped as plain text, which is worse for a tool result than the tail.
+- `get_epg_grid` gains `days`, `prev_days`, `start`, `end` and `channel_profile_id`. Previously it could only return the default past-hour-to-next-24-hours window across every channel.
+- `list_all_vod` gains `category`, accepting a name or `name|movie` / `name|series`.
+- `get_series_episodes` gains `search`, `m3u_account`, `ordering`, `page` and `page_size`; the endpoint is now paginated.
+- `get_movie_provider_info` gains `relation_id` and `force_refresh`. `get_series_provider_info` gains those plus `include_episodes` and `refresh_interval`.
+
+### Changed
+
+- `get_epg_grid` and `get_series_episodes` are annotated `-> dict`. Both return objects (`{"data": [...]}` and a paginated envelope); the old `-> list` annotations were wrong. FastMCP 1.x does not enforce a bare `list` annotation, so this changes no behaviour.
+- README documents which API key headers Dispatcharr accepts. `Api-Key` is silently ignored and only appears to work against public endpoints, which led to a misdiagnosis of a stale key as a header bug.
+- `swagger_new.yaml` refreshed from Dispatcharr 0.31.0 (`/api/schema/`); previous baseline rotated to `swagger_old.yaml`. Nothing was removed and no field became required, so all existing tools work unchanged. `cleanup_vod_logos` no longer takes a request body; the tool already sent an empty one.
+
+---
+
 ## [2.6.0] - 2026-08-29
 
 Tracks Dispatcharr 0.30.0.

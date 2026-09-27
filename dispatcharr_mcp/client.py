@@ -11,6 +11,8 @@ Authentication — two modes, checked in order:
        Set DISPATCHARR_USERNAME and DISPATCHARR_PASSWORD.
        Tokens are fetched lazily on the first request. A 401 response tries the
        refresh token before falling back to a full password login.
+       Dispatcharr throttles logins to 3/minute per IP, so one client must be
+       shared for the life of the process; a client per call logs in per call.
 
 Environment variables:
   DISPATCHARR_URL       - base URL, e.g. http://dispatcharr.example.com
@@ -19,6 +21,7 @@ Environment variables:
   DISPATCHARR_PASSWORD  - password  (JWT mode only)
 """
 
+import asyncio
 import os
 from typing import Any
 
@@ -52,6 +55,8 @@ class DispatcharrClient:
 
         self._access_token: str | None = None
         self._refresh_token: str | None = None
+        # Serialises re-authentication so concurrent tool calls share one login.
+        self._auth_lock = asyncio.Lock()
 
     def _url(self, path: str) -> str:
         return f"{self._base}{path}"
@@ -92,18 +97,29 @@ class DispatcharrClient:
         return False
 
     async def _ensure_token(self) -> None:
-        if not self._api_key and not self._access_token:
-            await self._login()
+        if self._api_key or self._access_token:
+            return
+        async with self._auth_lock:
+            if not self._access_token:
+                await self._login()
+
+    async def _reauthenticate(self, stale_token: str | None) -> None:
+        async with self._auth_lock:
+            # Another call already replaced the token while this one waited.
+            if self._access_token != stale_token:
+                return
+            # Access tokens are short-lived; prefer refresh over re-login
+            # to avoid sending the password over the wire unnecessarily.
+            if not await self._refresh():
+                await self._login()
 
     async def _request(self, method: str, path: str, **kwargs) -> Any:
         await self._ensure_token()
         async with httpx.AsyncClient(timeout=_TIMEOUT) as c:
+            sent_token = self._access_token
             r = await c.request(method, self._url(path), headers=self._auth_headers(), **kwargs)
             if r.status_code == 401 and not self._api_key:
-                # Access tokens are short-lived; prefer refresh over re-login
-                # to avoid sending the password over the wire unnecessarily.
-                if not await self._refresh():
-                    await self._login()
+                await self._reauthenticate(sent_token)
                 r = await c.request(method, self._url(path), headers=self._auth_headers(), **kwargs)
             r.raise_for_status()
             return r.json() if r.content else {}

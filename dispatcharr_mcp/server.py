@@ -36,10 +36,22 @@ mcp = FastMCP(
 )
 
 
+_shared_client: DispatcharrClient | None = None
+
+
 def _client() -> DispatcharrClient:
-    """Instantiate per-call so the MCP server process doesn't hold a login
-    session open indefinitely — the client re-uses its JWT until it expires."""
-    return DispatcharrClient()
+    """Return the process-wide client, creating it on first use.
+
+    Shared so its JWT survives between tool calls. A fresh client per call
+    threw the token away and logged in on every call, which trips
+    Dispatcharr's 3/minute login throttle (429) by the fourth call.
+    Created lazily so a missing env var surfaces as a tool error rather
+    than a crash at import.
+    """
+    global _shared_client
+    if _shared_client is None:
+        _shared_client = DispatcharrClient()
+    return _shared_client
 
 
 def _clean(params: dict) -> dict:
@@ -870,13 +882,37 @@ async def get_current_programs(channel_uuids: list[str] | None = None) -> list:
 
 
 @mcp.tool()
-async def get_epg_grid() -> list:
-    """Get the full EPG grid — past hour, now, and next 24 hours.
+async def get_epg_grid(
+    days: int | None = None,
+    prev_days: int | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    channel_profile_id: int | None = None,
+) -> dict:
+    """Get EPG programmes overlapping a time window, as ``{"data": [...]}``.
 
-    Returns programme data across all channels, suitable for building a
-    TV guide view or answering "what's on tonight" style queries.
+    With no arguments the window is the past hour through the next 24 hours,
+    suitable for "what's on tonight" style queries.
+
+    - `days`: days forward from now (1-365).
+    - `prev_days`: days of lookback from now (0-30; 0 starts at now).
+    - `start` / `end`: explicit ISO 8601 bounds. Either one set makes
+      Dispatcharr ignore `days` and `prev_days`.
+    - `channel_profile_id`: only channels enabled in that profile.
+
+    Wide windows across every channel get large; narrow the range or the
+    profile rather than asking for weeks of guide at once.
     """
-    return await _client().get("/api/epg/grid/")
+    return await _client().get(
+        "/api/epg/grid/",
+        params=_clean({
+            "days": days,
+            "prev_days": prev_days,
+            "start": start,
+            "end": end,
+            "channel_profile_id": channel_profile_id,
+        }),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -888,6 +924,56 @@ async def get_epg_grid() -> list:
 async def get_version() -> dict:
     """Get the running Dispatcharr application version."""
     return await _client().get("/api/core/version/")
+
+
+# ---------------------------------------------------------------------------
+# SYSTEM — log files (System > Logs)
+# ---------------------------------------------------------------------------
+
+# Dispatcharr serves up to 24 MB per read; far more than a tool result
+# should carry. Tails are trimmed to this many characters by default.
+_LOG_TAIL_CHARS = 20_000
+
+
+@mcp.tool()
+async def list_log_files() -> dict:
+    """List Dispatcharr's persisted log files, newest first.
+
+    Returns ``{"files": [{"name", "size", "modified"}], "collector_running"}``.
+    Pass a `name` from here to `get_log_file`.
+    """
+    return await _client().get("/api/core/logs/")
+
+
+@mcp.tool()
+async def get_log_file(
+    name: str,
+    cursor: str | None = None,
+    max_chars: int = _LOG_TAIL_CHARS,
+) -> dict:
+    """Read the tail of a Dispatcharr log file.
+
+    Returns ``content``, ``cursor``, ``reset`` and ``truncated``. Keep the
+    returned `cursor` and pass it back to get only the lines written since —
+    useful for watching a log while reproducing a problem. ``reset`` true
+    means the file rotated and the content starts over from a fresh tail.
+
+    `content` is trimmed to its last `max_chars` characters, on a line
+    boundary; ``trimmed`` in the response says whether that happened. The
+    cursor still points at the end of the file either way.
+    """
+    result = await _client().get(
+        f"/api/core/logs/{name}/", params=_clean({"cursor": cursor})
+    )
+    content = result.get("content", "")
+    trimmed = len(content) > max_chars
+    if trimmed:
+        tail = content[-max_chars:]
+        newline = tail.find("\n")
+        content = tail[newline + 1:] if newline >= 0 else tail
+    result["content"] = content
+    result["trimmed"] = trimmed
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1526,6 +1612,7 @@ async def bulk_remove_series_rules(
 @mcp.tool()
 async def list_all_vod(
     search: str | None = None,
+    category: str | None = None,
     ordering: str | None = None,
     page: int | None = None,
     page_size: int | None = None,
@@ -1533,13 +1620,19 @@ async def list_all_vod(
     """List all VOD content (movies and series) in a single unified list.
 
     Use `search` to filter by title, `ordering` to sort (e.g. ``"title"``
-    or ``"-year"``), and `page`/`page_size` for pagination.
+    or ``"-year"``), and `page`/`page_size` for pagination. `category` filters
+    by category name; suffix ``|movie`` or ``|series`` (e.g. ``"Action|movie"``)
+    to disambiguate a name used by both.
     """
     return await _client().get(
         "/api/vod/all/",
-        params=_clean(
-            {"search": search, "ordering": ordering, "page": page, "page_size": page_size}
-        ),
+        params=_clean({
+            "search": search,
+            "category": category,
+            "ordering": ordering,
+            "page": page,
+            "page_size": page_size,
+        }),
     )
 
 
@@ -1562,33 +1655,77 @@ async def get_episode(episode_id: int) -> dict:
 
 
 @mcp.tool()
-async def get_series_episodes(series_id: int) -> list:
-    """Get all episodes belonging to a TV series.
+async def get_series_episodes(
+    series_id: int,
+    search: str | None = None,
+    m3u_account: int | None = None,
+    ordering: str | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
+) -> dict:
+    """Get the episodes of a TV series, with the providers that carry each.
 
-    Returns the full episode list for the given series, grouped by season
-    where the API supports it.
+    Returns a paginated list. `search` filters by episode title,
+    `m3u_account` limits to episodes one provider carries, and
+    `page`/`page_size` page through long-running series.
     """
-    return await _client().get(f"/api/vod/series/{series_id}/episodes/")
+    return await _client().get(
+        f"/api/vod/series/{series_id}/episodes/",
+        params=_clean({
+            "search": search,
+            "m3u_account": m3u_account,
+            "ordering": ordering,
+            "page": page,
+            "page_size": page_size,
+        }),
+    )
 
 
 @mcp.tool()
-async def get_movie_provider_info(movie_id: int) -> dict:
+async def get_movie_provider_info(
+    movie_id: int,
+    relation_id: int | None = None,
+    force_refresh: bool | None = None,
+) -> dict:
     """Get external provider metadata for a VOD movie.
 
-    Returns data from the configured metadata provider (e.g. TMDB/TVDB)
-    for the given movie, including synopsis, cast, artwork URLs, and ratings.
+    Returns data from the M3U provider for the given movie, including
+    synopsis, cast, artwork URLs, and ratings. Dispatcharr caches this for
+    24 hours; `force_refresh` fetches it from the provider again.
+    `relation_id` picks which provider's copy to use when several carry it.
     """
-    return await _client().get(f"/api/vod/movies/{movie_id}/provider-info/")
+    return await _client().get(
+        f"/api/vod/movies/{movie_id}/provider-info/",
+        params=_clean({"relation_id": relation_id, "force_refresh": force_refresh}),
+    )
 
 
 @mcp.tool()
-async def get_series_provider_info(series_id: int) -> dict:
+async def get_series_provider_info(
+    series_id: int,
+    relation_id: int | None = None,
+    include_episodes: bool | None = None,
+    force_refresh: bool | None = None,
+    refresh_interval: int | None = None,
+) -> dict:
     """Get external provider metadata for a VOD TV series.
 
-    Returns data from the configured metadata provider (e.g. TMDB/TVDB)
-    for the given series, including synopsis, cast, artwork URLs, and ratings.
+    Returns data from the M3U provider for the given series, including
+    synopsis, cast, artwork URLs, ratings and, by default, episodes grouped
+    by season. Set `include_episodes` false for just the series details.
+    Data older than `refresh_interval` hours (default 24) is re-fetched;
+    `force_refresh` re-fetches regardless. `relation_id` picks which
+    provider's copy to use when several carry it.
     """
-    return await _client().get(f"/api/vod/series/{series_id}/provider-info/")
+    return await _client().get(
+        f"/api/vod/series/{series_id}/provider-info/",
+        params=_clean({
+            "relation_id": relation_id,
+            "include_episodes": include_episodes,
+            "force_refresh": force_refresh,
+            "refresh_interval": refresh_interval,
+        }),
+    )
 
 
 # ---------------------------------------------------------------------------
