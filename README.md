@@ -2,8 +2,6 @@
 
 An [MCP](https://modelcontextprotocol.io) server for [Dispatcharr](https://github.com/Dispatcharr/Dispatcharr) — giving AI agents full control over your IPTV streams, channels, EPG, and VOD library.
 
-Tracks Dispatcharr 0.31. Maintained fork of [crunchingcode/dispatcharr-mcp](https://github.com/crunchingcode/dispatcharr-mcp), which is no longer updated.
-
 ## Authentication
 
 Two modes are supported — `DISPATCHARR_API_KEY` takes priority if set:
@@ -101,7 +99,7 @@ docker run -d -p 8000:8000 \
   -e DISPATCHARR_URL=http://your-dispatcharr-host:9191 \
   -e DISPATCHARR_API_KEY=your-api-key \
   -e FASTMCP_HOST=0.0.0.0 \
-  ghcr.io/lukeeexd/dispatcharr-mcp:latest
+  ghcr.io/crunchingcode/dispatcharr-mcp:latest
 ```
 
 ### Connect your AI client (HTTP)
@@ -147,7 +145,7 @@ Use this approach when you want the MCP server to run as a subprocess on the sam
 ### Install
 
 ```bash
-git clone https://github.com/lukeeexd/dispatcharr-mcp
+git clone https://github.com/crunchingcode/dispatcharr-mcp
 cd dispatcharr-mcp
 python3 -m venv .venv
 .venv/bin/pip install -e .
