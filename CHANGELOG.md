@@ -4,7 +4,9 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
-## [Unreleased]
+## [2.8.0] - 2026-09-28
+
+Tracks Dispatcharr 0.31.0. Contributed by @lukeeexd (#1–#4). Requires mcp 2.x.
 
 ### Security
 
