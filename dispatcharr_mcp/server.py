@@ -12,6 +12,7 @@ Tools are grouped by domain:
   • VOD             — movies, series, episodes, unified list, provider metadata
   • VOD Logos       — artwork logos for VOD content (create/update/delete/cleanup)
   • System          — settings, stream profiles, useragents, system events
+  • Logs            — browse and tail Dispatcharr's collected log files
   • Notifications   — system notifications
   • Connect         — integrations, subscriptions, delivery logs
   • DVR             — recordings, series rules, recurring rules
@@ -827,7 +828,9 @@ async def get_system_events(
     """Get recent system events (channel starts, stops, buffering, client connections).
 
     Use `limit` (default 100, max 1000), `offset` for pagination, and
-    `event_type` to filter by a specific event kind.
+    `event_type` to filter by a specific event kind. Failed M3U and EPG
+    refreshes (download, parse, or Schedules Direct errors) are recorded as
+    ``m3u_error`` / ``epg_error`` — filter on those to find broken sources.
     """
     return await _client().get(
         "/api/core/system-events/",
@@ -881,29 +884,63 @@ async def get_current_programs(channel_uuids: list[str] | None = None) -> list:
     )
 
 
+# The unfiltered 24h grid is ~1 MB for ~150 channels; one programme without its
+# description is ~350 bytes, so this keeps a default result around 50 KB.
+_GRID_LIMIT = 150
+
+
 @mcp.tool()
 async def get_epg_grid(
     days: int | None = None,
     prev_days: int | None = None,
     start: str | None = None,
     end: str | None = None,
-    channel_profile_id: int | None = None,
+    channel_profile_id: int | str | None = None,
+    tvg_ids: list[str] | None = None,
+    search: str | None = None,
+    include_description: bool = False,
+    limit: int = _GRID_LIMIT,
 ) -> dict:
-    """Get EPG programmes overlapping a time window, as ``{"data": [...]}``.
+    """Get the EPG grid — programmes overlapping a time window.
 
-    With no arguments the window is the past hour through the next 24 hours,
-    suitable for "what's on tonight" style queries.
+    Suitable for answering "what's on tonight" style queries. For just the
+    programme airing now, `get_current_programs` is much smaller.
 
-    - `days`: days forward from now (1-365).
-    - `prev_days`: days of lookback from now (0-30; 0 starts at now).
-    - `start` / `end`: explicit ISO 8601 bounds. Either one set makes
-      Dispatcharr ignore `days` and `prev_days`.
-    - `channel_profile_id`: only channels enabled in that profile.
+    The raw grid is large (every programme on every channel), so it is
+    filtered and trimmed here before being returned:
 
-    Wide windows across every channel get large; narrow the range or the
-    profile rather than asking for weeks of guide at once.
+    - `tvg_ids` keeps only those channels' programmes. Programmes carry the
+      channel's ``tvg_id`` (see `list_channels`), not its channel ID.
+    - `search` keeps programmes whose title or sub-title contains the text
+      (case-insensitive).
+    - ``description`` is left out unless `include_description` is true, and
+      keys that are null, false or empty are dropped from each programme —
+      a missing ``is_new`` means false.
+    - Matches are sorted by ``start_time`` and capped at `limit` (default
+      150). The result is ``{"data": [...], "total": <matches>,
+      "truncated": <bool>}``; when truncated, narrow the window or filter
+      rather than raising `limit` a long way.
+
+    With no window arguments the window is the past hour through the next
+    24 hours. Choose the window one of two ways:
+
+    - Absolute: `start` / `end` as ISO 8601 datetimes (``2026-02-14T18:00:00Z``)
+      or bare dates. Either may be omitted — `start` defaults to an hour ago,
+      `end` to 24 hours after `start`. These take precedence over `days` /
+      `prev_days` when both are given.
+    - Relative: `days` ahead of now (clamped to 1–365) and `prev_days` behind
+      now (clamped to 0–30).
+
+    The whole window may not exceed 395 days; an oversized,
+    reversed, or unparseable window returns a 400 explaining which value is
+    wrong.
+
+    `channel_profile_id` limits the grid to channels in one channel profile
+    (``"all"`` or omitted means no profile filter) — this one is applied by
+    the server. Results only include channels the calling user may see, and
+    never channels hidden from output.
     """
-    return await _client().get(
+    result = await _client().get(
         "/api/epg/grid/",
         params=_clean({
             "days": days,
@@ -913,6 +950,34 @@ async def get_epg_grid(
             "channel_profile_id": channel_profile_id,
         }),
     )
+    programmes = result.get("data", [])
+    if tvg_ids is not None:
+        wanted = set(tvg_ids)
+        programmes = [p for p in programmes if p.get("tvg_id") in wanted]
+    if search:
+        needle = search.casefold()
+        programmes = [
+            p for p in programmes
+            if needle in (p.get("title") or "").casefold()
+            or needle in (p.get("sub_title") or "").casefold()
+        ]
+    # The server groups by channel; sorting by time makes the cap keep the
+    # soonest programmes across all channels instead of the first few channels.
+    programmes.sort(key=lambda p: p.get("start_time") or "")
+    limit = max(1, limit)
+    return {
+        "data": [
+            {
+                k: v for k, v in p.items()
+                # `is not False`, not falsiness, so season/episode 0 survive.
+                if v is not None and v is not False and v != ""
+                and (include_description or k != "description")
+            }
+            for p in programmes[:limit]
+        ],
+        "total": len(programmes),
+        "truncated": len(programmes) > limit,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1427,12 +1492,16 @@ async def delete_channel_logo(logo_id: int) -> dict:
 
 
 @mcp.tool()
-async def bulk_delete_channel_logos(ids: list[int]) -> dict:
+async def bulk_delete_channel_logos(ids: list[int], delete_files: bool = False) -> dict:
     """Delete multiple channel logos in one request.
 
-    `ids` is a list of integer logo IDs to remove.
+    `ids` is a list of integer logo IDs to remove. Set `delete_files` to also
+    remove locally stored logo files (those under ``/data/logos``) from disk.
     """
-    return await _client().delete("/api/channels/logos/bulk-delete/", data={"ids": ids})
+    return await _client().delete_with_body(
+        "/api/channels/logos/bulk-delete/",
+        data={"logo_ids": ids, "delete_files": delete_files},
+    )
 
 
 @mcp.tool()
@@ -1789,7 +1858,9 @@ async def bulk_delete_vod_logos(ids: list[int]) -> dict:
 
     `ids` is a list of integer logo IDs to remove.
     """
-    return await _client().delete("/api/vod/vodlogos/bulk-delete/", data={"ids": ids})
+    return await _client().delete_with_body(
+        "/api/vod/vodlogos/bulk-delete/", data={"logo_ids": ids}
+    )
 
 
 @mcp.tool()
@@ -1964,6 +2035,15 @@ async def update_user(user_id: int, fields: dict) -> dict:
 
     Pass any subset of user fields as `fields`
     (e.g. ``{"email": "new@example.com", "is_active": False}``).
+
+    ``custom_properties`` is merged into the existing dict, not replaced; a
+    key set to null is removed. ``custom_properties.allowed_m3u_profile_ids``
+    (admin only) restricts which provider profiles Redirect playback and
+    direct-link M3U exports may use for this user:
+
+    - key absent (or set to null to remove it) — all profiles allowed
+    - ``[]`` — no profiles allowed
+    - ``[3, 7]`` — only those M3U profile IDs (positive integers)
     """
     return await _client().patch(f"/api/accounts/users/{user_id}/", data=fields)
 
@@ -2280,16 +2360,34 @@ async def get_subscription(subscription_id: int) -> dict:
 
 
 @mcp.tool()
-async def create_subscription(event_type: str, fields: dict | None = None) -> dict:
-    """Create a new Connect event subscription.
+async def create_subscription(
+    event: str,
+    integration_id: int,
+    enabled: bool = True,
+    payload_template: str | None = None,
+) -> dict:
+    """Subscribe a Connect integration to one event.
 
-    `event_type` is the event name to subscribe to.
-    `fields` can supply any additional subscription fields.
+    `event` is one of: ``channel_start``, ``channel_stop``,
+    ``channel_reconnect``, ``channel_error``, ``channel_failover``,
+    ``stream_switch``, ``recording_start``, ``recording_end``,
+    ``epg_refresh``, ``epg_error``, ``m3u_refresh``, ``m3u_error``,
+    ``client_connect``, ``client_disconnect``, ``login_failed``,
+    ``epg_blocked``, ``m3u_blocked``, ``vod_start``, ``vod_stop``.
+
+    `integration_id` is the integration that receives the event (see
+    `list_integrations`). `payload_template` optionally customises the
+    delivered payload with a Jinja2/Django template.
     """
-    data: dict = {"event_type": event_type}
-    if fields:
-        data.update(fields)
-    return await _client().post("/api/connect/subscriptions/", data=data)
+    return await _client().post(
+        "/api/connect/subscriptions/",
+        data=_clean({
+            "event": event,
+            "integration": integration_id,
+            "enabled": enabled,
+            "payload_template": payload_template,
+        }),
+    )
 
 
 @mcp.tool()
@@ -2323,6 +2421,11 @@ async def update_recording(recording_id: int, fields: dict) -> dict:
 
     Pass any subset of recording fields as `fields`
     (e.g. ``{"title": "Better Title", "description": "…"}``).
+
+    Recording files are confined to ``/data/recordings``: path keys inside
+    ``custom_properties`` (``file_path``, ``file_name``, ``file_url``,
+    ``output_file_url``, ``_hls_dir``) are ignored on update and the stored
+    values kept, so a recording cannot be moved or repointed this way.
     """
     return await _client().patch(
         f"/api/channels/recordings/{recording_id}/", data=fields
@@ -2913,6 +3016,19 @@ async def update_setting(setting_id: int, fields: dict) -> dict:
 
     Pass any subset of setting fields as `fields`
     (e.g. ``{"value": "new-value"}``).
+
+    Grouped settings store a dict in ``value``; send the whole dict back with
+    your change, since a PATCH replaces ``value`` wholesale. Keys added in
+    Dispatcharr 0.31:
+
+    - ``dvr_settings.output_profile_id`` — output profile to transcode
+      recordings with; null (default) keeps raw-copy recording.
+    - ``proxy_settings.validate_redirect_urls`` — probe provider URLs before a
+      Redirect handoff (default true). Turn off for providers that drop probe
+      connections; this also disables failover probing on Redirect.
+    - ``system_settings.log_persist`` (bool), ``log_max_mb`` (1–20, default 5),
+      ``log_keep`` (files kept incl. the live one, min 2) — log file
+      collection, applied without a restart.
     """
     return await _client().patch(f"/api/core/settings/{setting_id}/", data=fields)
 
@@ -2935,7 +3051,11 @@ async def check_settings(fields: dict | None = None) -> dict:
 
 @mcp.tool()
 async def get_env_settings() -> dict:
-    """Get environment-level settings (read-only, sourced from env vars / config files)."""
+    """Get environment-level settings (read-only, sourced from env vars / config files).
+
+    Includes ``log_collector_running`` — when false, no log files are
+    collected and `list_log_files` will come back empty.
+    """
     return await _client().get("/api/core/settings/env/")
 
 
@@ -2944,7 +3064,8 @@ async def rehash_streams() -> dict:
     """Regenerate stream hashes for all streams.
 
     Forces Dispatcharr to recompute the stream hash used for deduplication.
-    Useful after bulk imports or URL changes.
+    Useful after bulk imports or URL changes. Admin only — a non-admin API key
+    or login gets 403.
     """
     return await _client().post("/api/core/rehash-streams/", data={})
 
@@ -3084,7 +3205,10 @@ async def update_output_profile(profile_id: int, fields: dict) -> dict:
 async def delete_output_profile(profile_id: int) -> dict:
     """Delete an output profile by ID.
 
-    Built-in locked profiles cannot be deleted.
+    Built-in locked profiles cannot be deleted — the API refuses, possibly
+    as a 500 rather than a 4xx, so check ``locked`` with `get_output_profile`
+    first. Deleting a profile also clears any user, HDHR, or DVR default that
+    pointed at it (they fall back to no output profile).
     """
     return await _client().delete(f"/api/core/outputprofiles/{profile_id}/")
 
