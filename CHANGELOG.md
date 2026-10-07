@@ -4,6 +4,22 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.9.0] - 2026-10-08
+
+Tracks Dispatcharr 0.32.0. The 0.32 API adds no endpoints the MCP needs and removes or changes nothing, so this release is docstrings only — no tool names, signatures or behaviour change.
+
+### Changed
+
+- `create_subscription` lists `channel_buffering`, the new Connect event for a live stream that stalls.
+- `update_channel` and `bulk_update_channels` document the new `is_radio` flag. On auto-created channels an M3U refresh re-copies it from the source stream, so the docstring points at `{"override": {"is_radio": ...}}` to make it stick, and at `effective_is_radio` for the resolved value.
+- `update_stream_profile` and `delete_stream_profile` note that locked built-ins (`FFmpeg`, `Streamlink`, `VLC`, `Proxy`, `Redirect`) now refuse edits other than `user_agent`, and refuse deletion with a 400. 0.32 renamed the default ffmpeg and streamlink profiles to `FFmpeg` and `Streamlink`.
+
+### Not added
+
+- `POST /api/accounts/auth/proxy-login/` (Reverse Proxy Auth). It exchanges an identity header set by a trusted reverse proxy for JWTs; the MCP authenticates with an API key or password and never sits behind that proxy, so the tool could only return 401.
+
+---
+
 ## [2.8.0] - 2026-09-28
 
 Tracks Dispatcharr 0.31.0. Contributed by @lukeeexd (#1–#4). Requires mcp 2.x.

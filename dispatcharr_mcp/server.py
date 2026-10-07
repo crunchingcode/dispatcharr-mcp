@@ -187,6 +187,13 @@ async def update_channel(channel_id: int, fields: dict) -> dict:
 
     Pass any subset of channel fields as `fields` (e.g. {"name": "BBC One",
     "channel_number": 1.0}).  Only provided fields are changed.
+
+    ``is_radio`` marks a channel as radio (emitted as ``radio="true"`` in M3U
+    and ``radio_streams`` in XC). On an auto-created channel an M3U refresh
+    re-copies it from the source stream, so set it through the override
+    instead — ``{"override": {"is_radio": true}}`` survives refreshes, and
+    ``{"override": {"is_radio": null}}`` follows the stream again. The
+    resolved value is ``effective_is_radio``.
     """
     return await _client().patch(f"/api/channels/channels/{channel_id}/", data=fields)
 
@@ -2331,13 +2338,20 @@ async def update_stream_profile(profile_id: int, fields: dict) -> dict:
 
     Pass any subset of profile fields as `fields`
     (e.g. ``{"name": "HQ FFMPEG", "parameters": "-c:v copy"}``).
+
+    Locked (built-in) profiles — ``FFmpeg``, ``Streamlink``, ``VLC``,
+    ``Proxy`` and ``Redirect`` — refuse every field except ``user_agent``.
+    Create a new profile to change a built-in's command or parameters.
     """
     return await _client().patch(f"/api/core/streamprofiles/{profile_id}/", data=fields)
 
 
 @mcp.tool()
 async def delete_stream_profile(profile_id: int) -> dict:
-    """Delete a stream profile by ID."""
+    """Delete a stream profile by ID.
+
+    Locked (built-in) profiles cannot be deleted; the API answers 400.
+    """
     return await _client().delete(f"/api/core/streamprofiles/{profile_id}/")
 
 
@@ -2488,11 +2502,12 @@ async def create_subscription(
     """Subscribe a Connect integration to one event.
 
     `event` is one of: ``channel_start``, ``channel_stop``,
-    ``channel_reconnect``, ``channel_error``, ``channel_failover``,
-    ``stream_switch``, ``recording_start``, ``recording_end``,
-    ``epg_refresh``, ``epg_error``, ``m3u_refresh``, ``m3u_error``,
-    ``client_connect``, ``client_disconnect``, ``login_failed``,
-    ``epg_blocked``, ``m3u_blocked``, ``vod_start``, ``vod_stop``.
+    ``channel_reconnect``, ``channel_error``, ``channel_buffering``,
+    ``channel_failover``, ``stream_switch``, ``recording_start``,
+    ``recording_end``, ``epg_refresh``, ``epg_error``, ``m3u_refresh``,
+    ``m3u_error``, ``client_connect``, ``client_disconnect``,
+    ``login_failed``, ``epg_blocked``, ``m3u_blocked``, ``vod_start``,
+    ``vod_stop``.
 
     `integration_id` is the integration that receives the event (see
     `list_integrations`). `payload_template` optionally customises the
@@ -2889,6 +2904,7 @@ async def bulk_update_channels(updates: list[dict]) -> dict:
     `updates` is a list of partial channel objects — each must include an
     ``id`` field plus the fields to change
     (e.g. ``[{"id": 1, "name": "BBC One"}, {"id": 2, "channel_number": 2}]``).
+    ``is_radio`` and ``override`` behave as in `update_channel`.
     """
     return await _client().patch(
         "/api/channels/channels/edit/bulk/", data=updates
