@@ -316,6 +316,27 @@ async def delete_channel_group(group_id: int) -> dict:
     return await _client().delete(f"/api/channels/groups/{group_id}/")
 
 
+@mcp.tool()
+async def claim_custom_channel_group(group_id: int) -> dict:
+    """Mark a channel group as custom so provider cleanup cannot remove it.
+
+    Groups made by hand are custom already. Claim a group when a provider
+    created it but you want to keep it even after the provider stops sending
+    it. The group's ``is_custom`` field shows the current state.
+    """
+    return await _client().post(f"/api/channels/groups/{group_id}/claim-custom/", data={})
+
+
+@mcp.tool()
+async def unclaim_custom_channel_group(group_id: int) -> dict:
+    """Remove custom ownership from a channel group.
+
+    Only works on a group with no channels assigned; otherwise the API
+    returns an error. Once unclaimed, provider cleanup may remove the group.
+    """
+    return await _client().post(f"/api/channels/groups/{group_id}/unclaim-custom/", data={})
+
+
 # ---------------------------------------------------------------------------
 # STREAMS (raw M3U streams from provider accounts)
 # ---------------------------------------------------------------------------
@@ -749,12 +770,17 @@ async def create_m3u_account(
     username: str | None = None,
     password: str | None = None,
     refresh_interval: int | None = None,
+    hash_key: str | None = None,
 ) -> dict:
     """Create a new M3U provider account.
 
     `account_type` is ``STD`` (standard M3U URL, the default) or ``XC``
     (Xtream Codes).  For a standard M3U simply pass `server_url`.  Set
     `max_streams` to ``0`` for unlimited concurrent streams.
+
+    `hash_key` overrides the global M3U Hash Key for this account only: a
+    comma-separated list of ``name``, ``url``, ``tvg_id``, ``m3u_id`` and
+    ``group`` (e.g. ``"name,tvg_id"``). Omit it to inherit the global key.
     """
     data: dict = {
         "name": name,
@@ -770,6 +796,8 @@ async def create_m3u_account(
         data["password"] = password
     if refresh_interval is not None:
         data["refresh_interval"] = refresh_interval
+    if hash_key is not None:
+        data["hash_key"] = hash_key
     return await _client().post("/api/m3u/accounts/", data=data)
 
 
@@ -779,6 +807,12 @@ async def update_m3u_account(account_id: int, fields: dict) -> dict:
 
     Pass any subset of M3U account fields as `fields`
     (e.g. ``{"name": "New Name", "is_active": False}``).
+
+    ``hash_key`` overrides the global M3U Hash Key for this account: a
+    comma-separated list of ``name``, ``url``, ``tvg_id``, ``m3u_id`` and
+    ``group``. ``""`` or null clears the override so the account inherits
+    the global key again. Changing it rehashes only this account; while a
+    refresh or rehash is running the API returns 409 and keeps the old value.
     """
     return await _client().patch(f"/api/m3u/accounts/{account_id}/", data=fields)
 
@@ -832,6 +866,9 @@ async def list_movies(
     Filter by title `search`, `category`, release `year`, or `m3u_account` ID.
     `is_adult` filters on the adult-content flag — pass ``False`` to exclude
     adult titles, ``True`` to list only those, or omit it for everything.
+
+    Each movie has a ``language`` (ISO 639-1, empty when untagged) taken from
+    its category's language tag; see `update_m3u_group_settings`.
     """
     return await _client().get(
         "/api/vod/movies/",
@@ -864,7 +901,11 @@ async def list_series(
     page: int | None = None,
     page_size: int | None = None,
 ) -> dict:
-    """List VOD TV series with optional filtering."""
+    """List VOD TV series with optional filtering.
+
+    Each series has a ``language`` (ISO 639-1, empty when untagged) taken
+    from its category's language tag; see `update_m3u_group_settings`.
+    """
     return await _client().get(
         "/api/vod/series/",
         params=_clean(
@@ -2166,6 +2207,13 @@ async def update_user(user_id: int, fields: dict) -> dict:
     - key absent (or set to null to remove it) — all profiles allowed
     - ``[]`` — no profiles allowed
     - ``[3, 7]`` — only those M3U profile IDs (positive integers)
+
+    ``custom_properties.epg_prev_days`` and ``epg_days`` set how many days
+    of past and future guide this user's XMLTV and XC EPG return. Remove
+    the key (null) to follow the system defaults in ``epg_settings``; ``0``
+    is explicit, so ``epg_prev_days: 0`` means no past programmes even when
+    the default is higher. Users created in the UI before Dispatcharr 0.33
+    often have ``0`` saved and need it cleared to follow the default.
     """
     return await _client().patch(f"/api/accounts/users/{user_id}/", data=fields)
 
@@ -2715,8 +2763,19 @@ async def refresh_m3u_vod(account_id: int) -> dict:
 async def update_m3u_group_settings(account_id: int, fields: dict) -> dict:
     """Update group-level settings for an M3U account.
 
-    `fields` contains the group settings mapping to apply
-    (e.g. enabling/disabling specific groups from the playlist).
+    `fields` holds two optional lists:
+
+    - ``group_settings`` — live channel groups, one entry per group:
+      ``{"channel_group": <id>, "enabled": ..., "auto_channel_sync": ...,
+      "auto_sync_channel_start": ..., "auto_sync_channel_end": ...}``.
+      Channel numbers must be >= 1 and the end must not be below the start.
+    - ``category_settings`` — VOD movie and series categories:
+      ``{"id": <category relation id>, "custom_properties": {"language":
+      "en", "quality": "1080p"}}``. ``language`` is a 2-letter ISO 639-1
+      code; ``quality`` is one of ``4K``, ``1080p``, ``720p``, ``480p``,
+      ``SD``; either may be null. Language becomes part of a title's
+      identity, so the same movie in two languages stays as two entries
+      after the next VOD refresh.
     """
     return await _client().patch(
         f"/api/m3u/accounts/{account_id}/group-settings/", data=fields
@@ -3164,6 +3223,24 @@ async def update_setting(setting_id: int, fields: dict) -> dict:
     - ``system_settings.log_persist`` (bool), ``log_max_mb`` (1–20, default 5),
       ``log_keep`` (files kept incl. the live one, min 2) — log file
       collection, applied without a restart.
+
+    Keys added in Dispatcharr 0.33:
+
+    - ``epg_settings.epg_history_min_days`` / ``epg_history_max_days``
+      (defaults 1 and 30, 0–365) — how many days of ended programmes to
+      keep. The max also caps how far back XMLTV, the guide grid and XC
+      EPG can serve.
+    - ``epg_settings.epg_default_prev_days`` (default 0) and
+      ``epg_default_days`` — days back and forward for clients and users
+      that don't choose a window. At 0, no past programmes are served, so
+      catch-up clients need this raised (e.g. 7).
+    - ``proxy_settings.stream_startup_timeout`` (default 8) — seconds a new
+      connection may go without data before a stream switch.
+    - ``proxy_settings.connection_timeout`` (default 10) — the "Stream Idle
+      Timeout": seconds without data mid-stream before a health check.
+    - ``stream_settings.default_output_format`` also accepts ``hls``.
+      Prefer ``mpegts`` or ``fmp4``: HLS has no reliable disconnect signal,
+      so channels take longer to stop after a player closes.
     """
     return await _client().patch(f"/api/core/settings/{setting_id}/", data=fields)
 

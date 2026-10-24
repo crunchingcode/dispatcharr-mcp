@@ -4,6 +4,34 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.10.0] - 2026-10-24
+
+Tracks Dispatcharr 0.33.0. `swagger_new.yaml` refreshed from `/api/schema/`; the 0.32 baseline rotated to `swagger_old.yaml`. The 0.33 API adds endpoints and fields but removes nothing and makes no request field required, so existing tools work unchanged.
+
+### Added
+
+- `claim_custom_channel_group` and `unclaim_custom_channel_group` (`POST /api/channels/groups/{id}/claim-custom/` and `/unclaim-custom/`). A claimed group survives provider cleanup; unclaiming needs a group with no channels. Groups now report `is_custom`.
+- `create_m3u_account` takes `hash_key`, a per-account override of the global M3U Hash Key (CSV of `name`, `url`, `tvg_id`, `m3u_id`, `group`).
+
+### Changed
+
+- `update_m3u_account` documents `hash_key`: empty or null inherits the global key, a change rehashes only that account, and a change during a refresh or rehash returns 409.
+- `update_m3u_group_settings` documents the real body: `group_settings` for live groups and `category_settings` for VOD categories, with the new `language` (ISO 639-1) and `quality` (`4K`, `1080p`, `720p`, `480p`, `SD`) tags.
+- `list_movies` and `list_series` note the new `language` field.
+- `update_user` documents `custom_properties.epg_prev_days` / `epg_days`: absent follows the system default, a saved `0` means none.
+- `update_setting` lists the 0.33 keys: `epg_settings.epg_history_min_days`, `epg_history_max_days`, `epg_default_prev_days`, `epg_default_days`; `proxy_settings.stream_startup_timeout` and `connection_timeout` (Stream Idle Timeout); and `hls` as a `default_output_format`.
+
+### Not added
+
+- `/api/accounts/users/me/app-data/` and `/api/accounts/users/{user_id}/app-data/`. Per-user key/value storage for third-party client apps; nothing an MCP client needs to read or write.
+- `DELETE /api/proxy/hls/sessions/{token}/` and the `/proxy/hls/{token}/…` playlist and segment URLs. Only the user who opened an HLS session may stop it, and the MCP never opens one; `stop_channel_client` still stops any client.
+
+### Notes
+
+- 0.33 makes REST views fail closed to admin and hides provider stream URLs from non-admin API clients. The MCP's user must be an admin (`user_level` 10) or many tools return 403 and `list_streams` loses its `url` field.
+
+---
+
 ## [2.9.0] - 2026-10-08
 
 Tracks Dispatcharr 0.32.0. The 0.32 API adds no endpoints the MCP needs and removes or changes nothing, so this release is docstrings only — no tool names, signatures or behaviour change.
