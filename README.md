@@ -48,7 +48,8 @@ The key is sent as `Authorization: ApiKey <key>`. Dispatcharr also accepts `X-AP
 | **DVR Recurring Rules** | `list_recurring_rules`, `get_recurring_rule`, `create_recurring_rule`, `update_recurring_rule`, `delete_recurring_rule` |
 | **EPG (programs)** | `get_epg_program`, `create_epg_program`, `update_epg_program`, `delete_epg_program`, `import_epg`, `get_epg_data_entry`, `get_epg_program_poster_url` |
 | **Backups** | `list_backups`, `create_backup`, `restore_backup`, `delete_backup`, `get_backup_schedule`, `update_backup_schedule`, `get_backup_status`, `get_backup_download_token` |
-| **Plugins** | `list_plugins`, `enable_plugin`, `run_plugin`, `configure_plugin`, `import_plugin`, `reload_plugins`, `delete_plugin`, `list_plugin_repos`, `create_plugin_repo`, `update_plugin_repo`, `delete_plugin_repo` |
+| **Plugins** | `list_plugins`, `enable_plugin`, `run_plugin`, `get_plugin_task_history`, `get_plugin_service_health`, `configure_plugin`, `import_plugin`, `reload_plugins`, `reload_plugin`, `delete_plugin` |
+| **Plugin Repos** | `list_plugin_repos`, `preview_plugin_repo`, `create_plugin_repo`, `update_plugin_repo`, `refresh_plugin_repo`, `delete_plugin_repo`, `list_available_plugins`, `get_plugin_detail`, `install_plugin_from_repo`, `get_plugin_repo_settings`, `update_plugin_repo_settings`, `list_plugin_messages`, `dismiss_plugin_message` |
 
 ## TODO
 
@@ -56,11 +57,11 @@ The following API endpoints are not yet implemented. Contributions welcome.
 
 ### Tier 2 — Useful management operations
 
-- **File uploads** — `upload_backup`, `upload_channel_logo` (multipart file upload, requires different client support)
+- **File uploads** — `upload_backup`, `upload_channel_logo` (multipart; the client has `post_multipart` since 2.11.0, see `import_plugin`)
 
 ### Tier 3 — Niche / lower priority
 
-- **Plugin extras** — `refresh_plugin_repo`, `install_plugin`, `list_available_plugins`, `get_repo_settings`, `update_repo_settings`, `preview_plugin`, `get_plugin_detail` (not present in current swagger spec)
+- **Plugin setting file fields** — `POST /api/plugins/plugins/{key}/fields/{field_id}/upload/` (files for a plugin's upload-type settings)
 
 ## Setup
 

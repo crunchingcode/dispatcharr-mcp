@@ -4,6 +4,43 @@ All notable changes to dispatcharr-mcp are documented here.
 
 ---
 
+## [2.11.0] - 2026-11-17
+
+Tracks Dispatcharr 0.34.0. `swagger_new.yaml` refreshed from `/api/schema/`; the 0.33 baseline rotated to `swagger_old.yaml`. The 0.34 API adds plugin endpoints and removes nothing. Checking the plugin views against the source turned up four plugin tools that sent bodies the API rejects; three of them never worked on any version this MCP has tracked.
+
+### Fixed
+
+- `enable_plugin` sent an empty body and documented a toggle that does not exist; the API requires `enabled` and answered 400. It now takes `enabled` (default true) and `acknowledge_capabilities`.
+- `run_plugin` sent no `action` and always got 400. It now takes `action` (an id from the plugin's `actions` in `list_plugins`) and `params`. Background actions return `{"status": "started", "task_id": ...}`, and a 504 after the sync wait is returned with its `task_id` rather than raised.
+- `import_plugin` posted JSON to an endpoint that only accepts a multipart ZIP upload, so it always got 400 "Missing 'file' upload". It now takes `zip_base64`, `filename`, `overwrite` and `acknowledge_capabilities`, and uploads the decoded ZIP.
+- `delete_plugin` could not answer 0.34's question about a plugin's saved data. It now takes `data_action` (`keep` or `delete`); without it, a plugin with saved data returns `data_confirmation_required` instead of an error.
+
+### Added
+
+- `get_plugin_task_history` (`GET /api/plugins/plugins/{key}/tasks/`, optional `trigger` filter) — background run history, to follow a `task_id`.
+- `get_plugin_service_health` (`GET /api/plugins/plugins/{key}/service-health/`) — health of a plugin's persistent services.
+- `reload_plugin` (`POST /api/plugins/plugins/{key}/reload/`) — reload one plugin without stopping the others.
+- `list_plugin_messages` and `dismiss_plugin_message` (`/api/plugins/repos/messages/`) — notices from the official plugin registry.
+- Repository install flow, which predates 0.34 but was never covered: `list_available_plugins`, `get_plugin_detail`, `install_plugin_from_repo` (with 0.34's `acknowledge_capabilities` / `deny_capabilities`), `refresh_plugin_repo`, `preview_plugin_repo`, and `get_plugin_repo_settings` / `update_plugin_repo_settings`.
+- `DispatcharrClient.post_multipart`, and an `accept` option on `post` / `delete_with_body` that returns chosen non-2xx JSON bodies instead of raising.
+
+### Changed
+
+- Plugin capability approval (new in 0.34): `enable_plugin`, `import_plugin` and `install_plugin_from_repo` return the 409 `capability_confirmation_required` body as a result. Raised as an error it was cut to 500 characters, which drops most of the capability list. Their docstrings tell the model to show the user the requested capabilities and approve only what the user approves.
+- `update_setting` lists the 0.34 keys: `proxy_settings.max_retries` (Max Connection Attempts) and `stream_retry_timeout`; `stream_settings.hdhr_output_format` (with `system` to follow the default output format); `system_settings.log_redact`.
+- `create_stream_profile` and `update_stream_profile` document the `{channelName}` and `{tvgId}` placeholders.
+- `list_plugins` documents its real shape (`{"plugins": [...]}` with `actions` and `capabilities`), not a dict keyed by plugin.
+
+### Not added
+
+- `POST /api/plugins/plugins/{key}/fields/{field_id}/upload/`. File uploads for a plugin's upload-type settings; no MCP use case yet. Listed in the README TODO.
+
+### Notes
+
+- Stream `url` now allows 8192 characters, and the notification enums gain `plugin_update` and `plugin_manifest`. The MCP passes both through unchanged.
+
+---
+
 ## [2.10.0] - 2026-10-24
 
 Tracks Dispatcharr 0.33.0. `swagger_new.yaml` refreshed from `/api/schema/`; the 0.32 baseline rotated to `swagger_old.yaml`. The 0.33 API adds endpoints and fields but removes nothing and makes no request field required, so existing tools work unchanged.

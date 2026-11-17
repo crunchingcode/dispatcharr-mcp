@@ -63,6 +63,10 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+        env:
+          # build-push-action uploads a .dockerbuild record artifact per run;
+          # keep it 3 days instead of the repo's 90-day default.
+          DOCKER_BUILD_RECORD_RETENTION_DAYS: 3
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')

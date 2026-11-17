@@ -141,7 +141,16 @@ class DispatcharrClient:
             if not await self._refresh():
                 await self._login()
 
-    async def _request(self, method: str, path: str, **kwargs) -> Any:
+    async def _request(
+        self, method: str, path: str, accept: tuple[int, ...] = (), **kwargs
+    ) -> Any:
+        """Send a request and return the decoded JSON body.
+
+        `accept` lists non-2xx statuses whose JSON body is returned instead of
+        raised. Use it for responses that are a question rather than a failure,
+        such as a 409 asking which plugin capabilities to approve: raised as an
+        error, the body would be cut to `_MAX_ERROR_BODY` characters.
+        """
         await self._ensure_token()
         async with httpx.AsyncClient(timeout=_TIMEOUT) as c:
             sent_token = self._access_token
@@ -149,14 +158,27 @@ class DispatcharrClient:
             if r.status_code == 401 and not self._api_key:
                 await self._reauthenticate(sent_token)
                 r = await c.request(method, self._url(path), headers=self._auth_headers(), **kwargs)
+            if r.status_code in accept:
+                try:
+                    return r.json()
+                except ValueError:
+                    pass  # not JSON after all; report it as an error below
             _raise_for_status(r)
             return r.json() if r.content else {}
 
     async def get(self, path: str, params: dict | None = None) -> Any:
         return await self._request("GET", path, params=params)
 
-    async def post(self, path: str, data: dict | None = None) -> Any:
-        return await self._request("POST", path, json=data or {})
+    async def post(
+        self, path: str, data: dict | None = None, accept: tuple[int, ...] = ()
+    ) -> Any:
+        return await self._request("POST", path, accept=accept, json=data or {})
+
+    async def post_multipart(
+        self, path: str, data: dict, files: dict, accept: tuple[int, ...] = ()
+    ) -> Any:
+        """POST multipart/form-data. `files` maps field → (filename, bytes, type)."""
+        return await self._request("POST", path, accept=accept, data=data, files=files)
 
     async def patch(self, path: str, data: dict) -> Any:
         return await self._request("PATCH", path, json=data)
@@ -167,5 +189,7 @@ class DispatcharrClient:
     async def delete(self, path: str, params: dict | None = None) -> dict:
         return await self._request("DELETE", path, params=params)
 
-    async def delete_with_body(self, path: str, data: dict) -> dict:
-        return await self._request("DELETE", path, json=data)
+    async def delete_with_body(
+        self, path: str, data: dict, accept: tuple[int, ...] = ()
+    ) -> dict:
+        return await self._request("DELETE", path, accept=accept, json=data)

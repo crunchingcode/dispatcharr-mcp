@@ -24,7 +24,9 @@ Transport:
   Defaults to stdio for local development.
 """
 
+import base64
 import functools
+import inspect
 import json
 import os
 
@@ -2041,35 +2043,105 @@ async def cleanup_vod_logos() -> dict:
 # ---------------------------------------------------------------------------
 
 
+# Capability approval: enabling a plugin, or updating or re-importing an
+# enabled one, answers 409 `capability_confirmation_required` with
+# `capabilities` (id, label, description, requires_restart) while any declared
+# capability is unapproved. These tools return that body rather than raising,
+# so the full list reaches the model. Approving one grants the plugin that
+# access (subprocesses, filesystem writes, outbound network, ...): it is the
+# user's call, never something to infer.
+_CAPABILITY_HELP = """
+    Capability approval: if the plugin declares capabilities that are not yet
+    approved, nothing changes and the result is
+    ``{"success": false, "error_code": "capability_confirmation_required",
+    "capabilities": [{"id", "label", "description", "requires_restart"}, ...]}``.
+    Show the user that list and ask. Only if they approve, call again with
+    ``acknowledge_capabilities`` set to the approved ``id`` values. Never
+    approve capabilities on your own judgement.
+"""
+
+
+def _with_capability_help(fn):
+    fn.__doc__ = inspect.cleandoc(fn.__doc__ or "") + "\n\n" + inspect.cleandoc(_CAPABILITY_HELP)
+    return fn
+
+
 @mcp.tool()
 async def list_plugins() -> dict:
     """List all installed Dispatcharr plugins.
 
-    Returns a dict of installed plugins keyed by plugin key, including
-    enabled state, version, description, and available actions.
+    Returns ``{"plugins": [...]}``. Each entry has its ``key``, enabled state,
+    version, settings fields, declared and acknowledged ``capabilities``, and
+    ``actions`` — the action ``id`` values `run_plugin` accepts, with an
+    ``async`` flag on actions that run in the background.
     """
     return await _client().get("/api/plugins/plugins/")
 
 
 @mcp.tool()
-async def enable_plugin(key: str) -> dict:
-    """Toggle the enabled/disabled state of a plugin.
+@_with_capability_help
+async def enable_plugin(
+    key: str,
+    enabled: bool = True,
+    acknowledge_capabilities: list[str] | None = None,
+) -> dict:
+    """Enable or disable a plugin.
 
-    `key` is the plugin's unique string identifier (e.g. ``"my_plugin"``).
-    Sends a POST to the plugin's enabled endpoint; the server toggles the
-    current state and returns the new enabled status.
+    `key` is the plugin's key (e.g. ``"my_plugin"``). Pass ``enabled=False``
+    to disable it; disabling stops its services and suspends its schedules.
+    Returns ``{"success", "enabled", "ever_enabled", "plugin"}``.
     """
-    return await _client().post(f"/api/plugins/plugins/{key}/enabled/", data={})
+    data: dict = {"enabled": enabled}
+    if acknowledge_capabilities:
+        data["acknowledge_capabilities"] = acknowledge_capabilities
+    return await _client().post(
+        f"/api/plugins/plugins/{key}/enabled/", data=data, accept=(409,)
+    )
 
 
 @mcp.tool()
-async def run_plugin(key: str) -> dict:
-    """Manually trigger a plugin's main action.
+async def run_plugin(key: str, action: str, params: dict | None = None) -> dict:
+    """Run one of a plugin's actions.
 
-    `key` is the plugin's unique string identifier.  The exact behaviour
-    depends on the plugin — consult `list_plugins` for what each plugin does.
+    `action` is an action ``id`` from the plugin's ``actions`` in
+    `list_plugins`; `params` are that action's inputs, if any. The plugin
+    must be enabled.
+
+    Ordinary actions wait for the result: ``{"success": true, "result": ...}``.
+    Actions marked ``async`` (and long ones that outlast the wait, which
+    answer 504) return ``{"status": "started", "task_id": ...}`` straight
+    away; follow them with `get_plugin_task_history`.
     """
-    return await _client().post(f"/api/plugins/plugins/{key}/run/", data={})
+    return await _client().post(
+        f"/api/plugins/plugins/{key}/run/",
+        data={"action": action, "params": params or {}},
+        accept=(504,),
+    )
+
+
+@mcp.tool()
+async def get_plugin_task_history(key: str, trigger: str | None = None) -> dict:
+    """List a plugin's recent background runs, newest first.
+
+    Each run has its status, timings and result message. `trigger` filters
+    by what started it: ``manual``, ``action``, ``schedule``, ``event`` or
+    ``unknown``. Dispatcharr keeps 50 runs for seven days by default.
+    Admin only.
+    """
+    return await _client().get(
+        f"/api/plugins/plugins/{key}/tasks/", params=_clean({"trigger": trigger})
+    )
+
+
+@mcp.tool()
+async def get_plugin_service_health(key: str) -> dict:
+    """Health of a plugin's persistent services.
+
+    Plugins can run long-lived services on one Dispatcharr process at a
+    time; this reports which process holds each and whether it is running.
+    Admin only.
+    """
+    return await _client().get(f"/api/plugins/plugins/{key}/service-health/")
 
 
 @mcp.tool()
@@ -2077,47 +2149,102 @@ async def configure_plugin(key: str, settings: dict) -> dict:
     """Save configuration settings for a plugin.
 
     `key` is the plugin's unique string identifier.
-    `settings` is a dict of key/value pairs — the accepted fields depend on
-    the individual plugin.  Consult the plugin's documentation or the
-    Dispatcharr web UI for the expected schema.
+    `settings` is a dict of key/value pairs — the accepted fields are the
+    plugin's settings ``fields`` in `list_plugins`. Keys the plugin manages
+    itself are kept.
     """
     return await _client().post(f"/api/plugins/plugins/{key}/settings/", data=settings)
 
 
 @mcp.tool()
-async def import_plugin(data: dict | None = None) -> dict:
-    """Import a plugin into Dispatcharr.
+@_with_capability_help
+async def import_plugin(
+    zip_base64: str,
+    filename: str = "plugin.zip",
+    overwrite: bool = False,
+    acknowledge_capabilities: list[str] | None = None,
+) -> dict:
+    """Install a plugin from a ZIP file.
 
-    `data` is an optional dict of import parameters (e.g. source URL or
-    plugin manifest).  The exact fields depend on the plugin being imported.
+    `zip_base64` is the plugin ZIP, base64-encoded (up to 200 MB decoded).
+    `overwrite` replaces an installed plugin with the same key; without it
+    an existing plugin is left alone and the import fails. A new plugin is
+    installed disabled — enable it with `enable_plugin`.
+
+    To install from a plugin repository instead, use
+    `install_plugin_from_repo`. Capability approval applies only when
+    overwriting a plugin that is enabled.
     """
-    return await _client().post("/api/plugins/plugins/import/", data=data or {})
+    try:
+        content = base64.b64decode(zip_base64, validate=True)
+    except ValueError as exc:
+        raise ToolError(f"zip_base64 is not valid base64: {exc}") from exc
+    data: dict = {}
+    if overwrite:
+        data["overwrite"] = "true"  # any non-empty form value means true
+    if acknowledge_capabilities:
+        data["acknowledge_capabilities"] = acknowledge_capabilities
+    return await _client().post_multipart(
+        "/api/plugins/plugins/import/",
+        data=data,
+        files={"file": (filename, content, "application/zip")},
+        accept=(409,),
+    )
 
 
 @mcp.tool()
 async def reload_plugins() -> dict:
     """Reload all installed plugins without restarting Dispatcharr.
 
-    Use this after manually editing plugin files or after an import to
-    pick up any changes.
+    Stops every plugin's services first. To reload one plugin and leave the
+    others running, use `reload_plugin`.
     """
     return await _client().post("/api/plugins/plugins/reload/", data={})
 
 
 @mcp.tool()
-async def delete_plugin(key: str) -> dict:
-    """Delete an installed plugin by key.
+async def reload_plugin(key: str) -> dict:
+    """Reload one plugin's code without touching any other plugin.
 
-    `key` is the plugin's unique string identifier.
-    This removes the plugin and its configuration from Dispatcharr.
+    Other Dispatcharr workers pick it up on their next use of the plugin.
     """
-    return await _client().delete(f"/api/plugins/plugins/{key}/delete/")
+    return await _client().post(f"/api/plugins/plugins/{key}/reload/", data={})
+
+
+@mcp.tool()
+async def delete_plugin(key: str, data_action: str | None = None) -> dict:
+    """Uninstall a plugin by key.
+
+    Plugins keep saved data in a directory that survives updates. If that
+    directory has anything in it and `data_action` is not given, nothing is
+    removed and the result is ``{"success": false,
+    "data_confirmation_required": true}``. Ask the user, then call again
+    with ``data_action="keep"`` (keep it for a future reinstall) or
+    ``"delete"``.
+    """
+    return await _client().delete_with_body(
+        f"/api/plugins/plugins/{key}/delete/",
+        data=_clean({"data_action": data_action}),
+        accept=(409,),
+    )
 
 
 @mcp.tool()
 async def list_plugin_repos() -> list:
     """List all configured plugin repositories."""
     return await _client().get("/api/plugins/repos/")
+
+
+@mcp.tool()
+async def preview_plugin_repo(url: str, public_key: str | None = None) -> dict:
+    """Check a repository manifest URL without saving it.
+
+    Returns ``valid``, ``registry_name``, ``signature_verified``,
+    ``plugin_count`` and any ``errors``. Use it before `create_plugin_repo`.
+    """
+    return await _client().post(
+        "/api/plugins/repos/preview/", data=_clean({"url": url, "public_key": public_key})
+    )
 
 
 @mcp.tool()
@@ -2146,6 +2273,16 @@ async def update_plugin_repo(repo_id: int, fields: dict) -> dict:
 
 
 @mcp.tool()
+async def refresh_plugin_repo(repo_id: int) -> dict:
+    """Re-fetch a plugin repository's manifest now.
+
+    Repositories also refresh on a schedule (see
+    `get_plugin_repo_settings`). Returns the updated repository.
+    """
+    return await _client().post(f"/api/plugins/repos/{repo_id}/refresh/", data={})
+
+
+@mcp.tool()
 async def delete_plugin_repo(repo_id: int) -> dict:
     """Remove a plugin repository by ID.
 
@@ -2153,6 +2290,116 @@ async def delete_plugin_repo(repo_id: int) -> dict:
     already installed from this repo are not automatically removed.
     """
     return await _client().delete(f"/api/plugins/repos/{repo_id}/")
+
+
+@mcp.tool()
+async def list_available_plugins() -> dict:
+    """List the plugins offered by all enabled repositories.
+
+    Returns ``{"plugins": [...]}``. Each entry has ``repo_id``, ``slug``,
+    ``latest_version``, ``latest_url``, ``latest_sha256``,
+    ``min_dispatcharr_version`` / ``max_dispatcharr_version``,
+    ``manifest_url``, whether the repo is official and signature-verified,
+    and ``install_status`` (``not_installed``, ``installed``,
+    ``update_available``, ``unmanaged``, ``different_repo``, ...).
+    """
+    return await _client().get("/api/plugins/repos/available/")
+
+
+@mcp.tool()
+async def get_plugin_detail(repo_id: int, manifest_url: str) -> dict:
+    """Fetch a plugin's full manifest from its repository.
+
+    `manifest_url` is the entry's ``manifest_url`` from
+    `list_available_plugins`. Returns ``{"manifest", "signature_verified"}``;
+    the manifest lists every published version with its download URL,
+    checksum and changelog, plus the capabilities the plugin requests.
+    """
+    return await _client().post(
+        "/api/plugins/repos/plugin-detail/",
+        data={"repo_id": repo_id, "manifest_url": manifest_url},
+    )
+
+
+@mcp.tool()
+@_with_capability_help
+async def install_plugin_from_repo(
+    repo_id: int,
+    slug: str,
+    version: str,
+    download_url: str,
+    sha256: str | None = None,
+    min_dispatcharr_version: str | None = None,
+    max_dispatcharr_version: str | None = None,
+    prerelease: bool = False,
+    acknowledge_capabilities: list[str] | None = None,
+    deny_capabilities: bool = False,
+) -> dict:
+    """Install or update a plugin from a repository.
+
+    Take the arguments from a `list_available_plugins` entry: ``repo_id``,
+    ``slug``, ``latest_version`` as `version`, ``latest_url`` as
+    `download_url`, ``latest_sha256`` as `sha256`, and the min/max
+    Dispatcharr versions. For an older version, take them from that version
+    in `get_plugin_detail`. Always pass `sha256` when the repo provides it;
+    a mismatch aborts the install. Set `prerelease` when installing a
+    prerelease version.
+
+    A new plugin installs disabled; enable it with `enable_plugin`, which
+    asks for capability approval. Approval here applies only to updating a
+    plugin that is already enabled. If the user declines the new
+    capabilities, pass ``deny_capabilities=True``: the update is not
+    applied and the plugin is disabled.
+    """
+    data = _clean(
+        {
+            "repo_id": repo_id,
+            "slug": slug,
+            "version": version,
+            "download_url": download_url,
+            "sha256": sha256,
+            "min_dispatcharr_version": min_dispatcharr_version,
+            "max_dispatcharr_version": max_dispatcharr_version,
+            "acknowledge_capabilities": acknowledge_capabilities or None,
+        }
+    )
+    data["prerelease"] = prerelease
+    data["deny_capabilities"] = deny_capabilities
+    return await _client().post("/api/plugins/repos/install/", data=data, accept=(409,))
+
+
+@mcp.tool()
+async def get_plugin_repo_settings() -> dict:
+    """Get how often plugin repositories refresh (``refresh_interval_hours``, 0 = never)."""
+    return await _client().get("/api/plugins/repos/settings/")
+
+
+@mcp.tool()
+async def update_plugin_repo_settings(refresh_interval_hours: int) -> dict:
+    """Set how often plugin repositories refresh, in hours (0 disables it; default 6)."""
+    return await _client().put(
+        "/api/plugins/repos/settings/",
+        data={"refresh_interval_hours": refresh_interval_hours},
+    )
+
+
+@mcp.tool()
+async def list_plugin_messages() -> dict:
+    """List notices from the official plugin registry for the current user.
+
+    The registry can post informational, warning and critical notices
+    (for example about a plugin with a known problem). Returns
+    ``{"messages": [...]}``; dismissed notices are left out.
+    """
+    return await _client().get("/api/plugins/repos/messages/")
+
+
+@mcp.tool()
+async def dismiss_plugin_message(message_id: str) -> dict:
+    """Dismiss an official registry notice for the current user (`message_id` is its UUID)."""
+    return await _client().post(
+        f"/api/plugins/repos/messages/{message_id}/dismiss/", data={}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2369,7 +2616,10 @@ async def create_stream_profile(
 ) -> dict:
     """Create a new stream profile (FFmpeg/Streamlink/VLC output configuration).
 
-    `parameters` is the FFmpeg/encoder parameters string.
+    `parameters` is the FFmpeg/encoder parameters string. Placeholders:
+    ``{streamUrl}``, ``{userAgent}``, ``{channelId}``, ``{channelName}`` and
+    ``{tvgId}`` (the last two from Dispatcharr 0.34; a hand-set channel name
+    or TVG-ID wins over the provider's).
     `profile_type` is one of ``"ffmpeg"``, ``"streamlink"``, ``"vlc"``, etc.
     """
     data: dict = {"name": name}
@@ -2385,7 +2635,8 @@ async def update_stream_profile(profile_id: int, fields: dict) -> dict:
     """Partially update a stream profile.
 
     Pass any subset of profile fields as `fields`
-    (e.g. ``{"name": "HQ FFMPEG", "parameters": "-c:v copy"}``).
+    (e.g. ``{"name": "HQ FFMPEG", "parameters": "-c:v copy"}``). The
+    placeholders `create_stream_profile` lists work in ``parameters``.
 
     Locked (built-in) profiles — ``FFmpeg``, ``Streamlink``, ``VLC``,
     ``Proxy`` and ``Redirect`` — refuse every field except ``user_agent``.
@@ -3241,6 +3492,22 @@ async def update_setting(setting_id: int, fields: dict) -> dict:
     - ``stream_settings.default_output_format`` also accepts ``hls``.
       Prefer ``mpegts`` or ``fmp4``: HLS has no reliable disconnect signal,
       so channels take longer to stop after a player closes.
+
+    Keys added in Dispatcharr 0.34:
+
+    - ``proxy_settings.max_retries`` (1–10, default 3) — the UI's "Max
+      Connection Attempts": tries at a stream URL before failing over.
+    - ``proxy_settings.stream_retry_timeout`` (0–30, default 3) — seconds a
+      channel start waits for a free provider connection when every M3U
+      profile is at its limit; 0 does not wait. Out-of-range proxy values
+      are rejected with field errors and nothing is saved.
+    - ``stream_settings.hdhr_output_format`` — ``mpegts`` (default),
+      ``fmp4``, ``hls``, or ``system`` to follow ``default_output_format``.
+      HDHR clients no longer inherit the default output format unless this
+      is ``system``.
+    - ``system_settings.log_redact`` (default true) — mask provider
+      credentials in container logs and log files. Turn it off only while
+      raw URLs are needed.
     """
     return await _client().patch(f"/api/core/settings/{setting_id}/", data=fields)
 
